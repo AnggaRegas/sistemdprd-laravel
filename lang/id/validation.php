@@ -1,0 +1,53 @@
+<?php
+
+return [
+    'accepted' => 'Kolom :attribute harus diterima.',
+    'active_url' => 'Kolom :attribute bukan URL yang valid.',
+    'after' => 'Kolom :attribute harus berisi tanggal setelah :date.',
+    'alpha' => 'Kolom :attribute hanya boleh berisi huruf.',
+    'alpha_dash' => 'Kolom :attribute hanya boleh berisi huruf, angka, tanda hubung, dan garis bawah.',
+    'alpha_num' => 'Kolom :attribute hanya boleh berisi huruf dan angka.',
+    'confirmed' => 'Konfirmasi :attribute tidak cocok.',
+    'current_password' => 'Kata sandi yang Anda masukkan tidak sesuai.',
+    'date' => 'Kolom :attribute bukan tanggal yang valid.',
+    'email' => 'Kolom :attribute harus berupa alamat email yang valid.',
+    'exists' => 'Nilai :attribute yang dipilih tidak valid.',
+    'in' => 'Nilai :attribute yang dipilih tidak valid.',
+    'integer' => 'Kolom :attribute harus berupa bilangan bulat.',
+    'lowercase' => 'Kolom :attribute harus berupa huruf kecil.',
+    'max' => [
+        'array' => 'Kolom :attribute tidak boleh lebih dari :max item.',
+        'file' => 'Kolom :attribute tidak boleh lebih dari :max kilobyte.',
+        'numeric' => 'Kolom :attribute tidak boleh lebih dari :max.',
+        'string' => 'Kolom :attribute tidak boleh lebih dari :max karakter.',
+    ],
+    'min' => [
+        'array' => 'Kolom :attribute harus memiliki setidaknya :min item.',
+        'file' => 'Kolom :attribute harus berukuran setidaknya :min kilobyte.',
+        'numeric' => 'Kolom :attribute harus setidaknya :min.',
+        'string' => 'Kolom :attribute harus setidaknya :min karakter.',
+    ],
+    'numeric' => 'Kolom :attribute harus berupa angka.',
+    'password' => [
+        'letters' => 'Kata sandi harus mengandung setidaknya satu huruf.',
+        'mixed' => 'Kata sandi harus mengandung setidaknya satu huruf besar dan satu huruf kecil.',
+        'numbers' => 'Kata sandi harus mengandung setidaknya satu angka.',
+        'symbols' => 'Kata sandi harus mengandung setidaknya satu simbol.',
+        'uncompromised' => 'Kata sandi yang diberikan pernah muncul dalam kebocoran data. Silakan gunakan kata sandi lain.',
+    ],
+    'required' => 'Kolom :attribute wajib diisi.',
+    'string' => 'Kolom :attribute harus berupa teks.',
+    'unique' => 'Kolom :attribute sudah digunakan.',
+    'uploaded' => 'Kolom :attribute gagal diunggah.',
+    'url' => 'Kolom :attribute harus berupa URL yang valid.',
+
+    'attributes' => [
+        'name' => 'nama lengkap',
+        'username' => 'username',
+        'email' => 'alamat email',
+        'password' => 'kata sandi',
+        'password_confirmation' => 'konfirmasi kata sandi',
+        'token' => 'token',
+        'current_password' => 'kata sandi saat ini',
+    ],
+];
