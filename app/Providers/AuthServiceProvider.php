@@ -37,6 +37,14 @@ class AuthServiceProvider extends ServiceProvider
         });
 
         /*
+         * Manajemen Landing Page hanya untuk administrator. Route publik
+         * membaca konten Published; lapisan ini menjaga seluruh CRUD admin.
+         */
+        Gate::define('manage-landing-page', function (User $user) {
+            return $user->isAdministrator();
+        });
+
+        /*
          * Administrator boleh mengelola hierarki arsip semua anggota.
          * Staf pendamping hanya untuk anggota yang ditugaskan secara aktif.
          */

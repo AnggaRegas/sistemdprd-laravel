@@ -6,6 +6,9 @@ use App\Http\Controllers\Portal\ArchiveController;
 use App\Http\Controllers\Portal\ArchiveDocumentController;
 use App\Http\Controllers\Portal\CommissionController;
 use App\Http\Controllers\Portal\DashboardController;
+use App\Http\Controllers\Portal\LandingAgendaController;
+use App\Http\Controllers\Portal\LandingGalleryController;
+use App\Http\Controllers\Portal\LandingNewsController;
 use App\Http\Controllers\Portal\MemberArchiveController;
 use App\Http\Controllers\Portal\MemberController;
 use App\Http\Controllers\Portal\NotificationController;
@@ -14,7 +17,11 @@ use App\Http\Controllers\Portal\RdpMeetingController;
 use App\Http\Controllers\Portal\ReportController;
 use App\Http\Controllers\Portal\StaffAccountController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicSite\AgendaPageController;
 use App\Http\Controllers\PublicSite\AspirationController;
+use App\Http\Controllers\PublicSite\GalleryPageController;
+use App\Http\Controllers\PublicSite\HomeController;
+use App\Http\Controllers\PublicSite\NewsPageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,9 +35,30 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-})->name('welcome');
+Route::get('/', [HomeController::class, 'index'])->name('welcome');
+
+/*
+|--------------------------------------------------------------------------
+| Informasi publik landing page
+|--------------------------------------------------------------------------
+| Hanya konten berstatus Published yang dapat dibaca masyarakat. Halaman
+| admin pengelolaannya berada di grup /landing-page (khusus administrator).
+*/
+Route::get('/berita', [NewsPageController::class, 'index'])->name('berita.index');
+Route::get('/berita/{slug}', [NewsPageController::class, 'show'])
+    ->where('slug', '[A-Za-z0-9\-]+')
+    ->name('berita.show');
+
+Route::get('/dokumentasi', [GalleryPageController::class, 'index'])->name('dokumentasi.index');
+Route::get('/dokumentasi/{slug}', [GalleryPageController::class, 'show'])
+    ->where('slug', '[A-Za-z0-9\-]+')
+    ->name('dokumentasi.show');
+
+Route::get('/agenda', [AgendaPageController::class, 'index'])->name('agenda.index');
+Route::get('/agenda/arsip', [AgendaPageController::class, 'archive'])->name('agenda.arsip');
+Route::get('/agenda/{slug}', [AgendaPageController::class, 'show'])
+    ->where('slug', '[A-Za-z0-9\-]+')
+    ->name('agenda.show');
 
 /*
 |--------------------------------------------------------------------------
@@ -138,6 +166,76 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
         Route::delete('/komisi/{commission}/rdp/{meeting}/dokumen/{document}', [RdpDocumentController::class, 'destroy'])
             ->name('komisi.rdp.documents.destroy');
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Manajemen Landing Page (khusus administrator / Superadmin)
+    |--------------------------------------------------------------------------
+    | Middleware role dan gate berlapis; staf pendamping tidak dapat membuka
+    | modul ini meskipun mengetik URL secara langsung.
+    */
+    Route::middleware(['role:administrator', 'can:manage-landing-page'])
+        ->prefix('landing-page')
+        ->name('landing.')
+        ->group(function () {
+            Route::get('/berita', [LandingNewsController::class, 'index'])->name('news.index');
+            Route::get('/berita/create', [LandingNewsController::class, 'create'])->name('news.create');
+            Route::post('/berita', [LandingNewsController::class, 'store'])->name('news.store');
+            Route::get('/berita/{news}/edit', [LandingNewsController::class, 'edit'])
+                ->whereNumber('news')
+                ->name('news.edit');
+            Route::put('/berita/{news}', [LandingNewsController::class, 'update'])
+                ->whereNumber('news')
+                ->name('news.update');
+            Route::delete('/berita/{news}', [LandingNewsController::class, 'destroy'])
+                ->whereNumber('news')
+                ->name('news.destroy');
+
+            Route::get('/dokumentasi', [LandingGalleryController::class, 'index'])->name('galleries.index');
+            Route::get('/dokumentasi/create', [LandingGalleryController::class, 'create'])->name('galleries.create');
+            Route::post('/dokumentasi', [LandingGalleryController::class, 'store'])->name('galleries.store');
+            Route::get('/dokumentasi/{gallery}/edit', [LandingGalleryController::class, 'edit'])
+                ->whereNumber('gallery')
+                ->name('galleries.edit');
+            Route::put('/dokumentasi/{gallery}', [LandingGalleryController::class, 'update'])
+                ->whereNumber('gallery')
+                ->name('galleries.update');
+            Route::delete('/dokumentasi/{gallery}', [LandingGalleryController::class, 'destroy'])
+                ->whereNumber('gallery')
+                ->name('galleries.destroy');
+
+            Route::post('/dokumentasi/{gallery}/foto', [LandingGalleryController::class, 'storePhotos'])
+                ->whereNumber('gallery')
+                ->name('galleries.photos.store');
+            Route::patch('/dokumentasi/{gallery}/foto/urutkan', [LandingGalleryController::class, 'reorderPhotos'])
+                ->whereNumber('gallery')
+                ->name('galleries.photos.reorder');
+            Route::patch('/dokumentasi/{gallery}/foto/{photo}', [LandingGalleryController::class, 'updatePhoto'])
+                ->whereNumber('gallery')
+                ->whereNumber('photo')
+                ->name('galleries.photos.update');
+            Route::patch('/dokumentasi/{gallery}/foto/{photo}/sampul', [LandingGalleryController::class, 'setCover'])
+                ->whereNumber('gallery')
+                ->whereNumber('photo')
+                ->name('galleries.photos.cover');
+            Route::delete('/dokumentasi/{gallery}/foto/{photo}', [LandingGalleryController::class, 'destroyPhoto'])
+                ->whereNumber('gallery')
+                ->whereNumber('photo')
+                ->name('galleries.photos.destroy');
+
+            Route::get('/agenda', [LandingAgendaController::class, 'index'])->name('agendas.index');
+            Route::get('/agenda/create', [LandingAgendaController::class, 'create'])->name('agendas.create');
+            Route::post('/agenda', [LandingAgendaController::class, 'store'])->name('agendas.store');
+            Route::get('/agenda/{agenda}/edit', [LandingAgendaController::class, 'edit'])
+                ->whereNumber('agenda')
+                ->name('agendas.edit');
+            Route::put('/agenda/{agenda}', [LandingAgendaController::class, 'update'])
+                ->whereNumber('agenda')
+                ->name('agendas.update');
+            Route::delete('/agenda/{agenda}', [LandingAgendaController::class, 'destroy'])
+                ->whereNumber('agenda')
+                ->name('agendas.destroy');
+        });
 
     Route::middleware('role:administrator,staf_pendamping')->group(function () {
         Route::get('/arsip', [ArchiveController::class, 'index'])->name('arsip.index');

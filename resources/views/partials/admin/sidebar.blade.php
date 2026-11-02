@@ -91,6 +91,40 @@
                         </a>
                     </li>
                 </ul>
+
+                <div class="sidebar-section-label">Manajemen Landing Page</div>
+
+                <ul class="sidebar-nav">
+                    <li>
+                        <a href="{{ route('landing.news.index') }}"
+                           class="sidebar-link {{ request()->routeIs('landing.news.*') ? 'active' : '' }}"
+                           title="Berita &amp; Kegiatan"
+                           @if (request()->routeIs('landing.news.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-newspaper-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Berita &amp; Kegiatan</span>
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="{{ route('landing.galleries.index') }}"
+                           class="sidebar-link {{ request()->routeIs('landing.galleries.*') ? 'active' : '' }}"
+                           title="Dokumentasi Kegiatan"
+                           @if (request()->routeIs('landing.galleries.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-gallery-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Dokumentasi Kegiatan</span>
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="{{ route('landing.agendas.index') }}"
+                           class="sidebar-link {{ request()->routeIs('landing.agendas.*') ? 'active' : '' }}"
+                           title="Agenda Kegiatan"
+                           @if (request()->routeIs('landing.agendas.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-calendar-event-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Agenda Kegiatan</span>
+                        </a>
+                    </li>
+                </ul>
             @endif
 
             <div class="sidebar-section-label">Akun</div>

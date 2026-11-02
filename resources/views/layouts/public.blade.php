@@ -108,7 +108,7 @@
     <a href="#konten" class="skip-link">Lewati ke konten utama</a>
 
     <div class="bg-[#082a23] text-white/60">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-2.5 text-[11px] font-medium tracking-wide sm:px-8">
+        <div class="container-public flex items-center justify-between gap-4 py-2.5 text-[11px] font-medium tracking-wide">
             <p class="flex items-center gap-2">
                 <svg class="h-3.5 w-3.5 text-[#e6c47d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                     <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/>
@@ -136,7 +136,7 @@
         class="sticky top-0 z-50 border-b border-[#e9e2d4] bg-white/95 backdrop-blur-xl"
     >
         <nav aria-label="Navigasi utama">
-            <div class="mx-auto max-w-7xl px-5 sm:px-8">
+            <div class="container-public">
                 <div class="flex h-[78px] items-center justify-between gap-6">
 
                     <a href="{{ route('welcome') }}#beranda" class="group flex shrink-0 items-center gap-3" aria-label="DPRD Kota Parepare - Beranda">
@@ -203,7 +203,7 @@
             </div>
 
             <div x-show="menuOpen" x-cloak x-transition.opacity class="border-t border-[#eee8dc] bg-white lg:hidden">
-                <div class="mx-auto max-w-7xl px-5 py-4 sm:px-8">
+                <div class="container-public py-4">
                     <div class="flex flex-col">
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#beranda">Beranda</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#layanan">Layanan</a>
@@ -232,7 +232,7 @@
 
     <main id="konten">
         @if (session('error'))
-            <div class="mx-auto max-w-7xl px-5 pt-6 sm:px-8">
+            <div class="container-public pt-6">
                 <div class="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm leading-6 text-red-700" role="alert">
                     <svg class="mt-0.5 h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="12" cy="12" r="9"/>
@@ -247,7 +247,7 @@
     </main>
 
     <footer class="bg-[#082a23] text-white">
-        <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8">
+        <div class="container-public py-14">
             <div class="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.5fr_.7fr_.8fr_.9fr] lg:gap-12">
                 <div>
                     <a href="{{ route('welcome') }}#beranda" class="inline-flex items-center gap-3" aria-label="DPRD Kota Parepare - Beranda">
@@ -317,7 +317,7 @@
         </div>
 
         <div class="border-t border-white/10">
-            <div class="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-5 text-[11px] text-white/35 sm:px-8 md:flex-row md:items-center md:justify-between">
+            <div class="container-public flex flex-col gap-3 py-5 text-[11px] text-white/35 md:flex-row md:items-center md:justify-between">
                 <p>&copy; {{ date('Y') }} DPRD Kota Parepare. Hak cipta dilindungi.</p>
                 <p>Portal informasi dan layanan masyarakat</p>
             </div>

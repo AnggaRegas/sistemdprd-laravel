@@ -9,7 +9,7 @@
         <div class="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#c9a45c]/20 blur-3xl"></div>
         <div class="absolute -bottom-28 left-[-8%] h-72 w-72 rounded-full bg-emerald-300/10 blur-3xl"></div>
 
-        <div class="relative mx-auto max-w-7xl px-5 pb-28 pt-12 sm:px-8 sm:pt-16 lg:pb-32">
+        <div class="relative container-public pb-28 pt-12 sm:pt-16 lg:pb-32">
             <nav class="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-white/45" aria-label="Breadcrumb">
                 <a href="{{ route('welcome') }}" class="transition hover:text-[#e6c47d]">Beranda</a>
                 <span aria-hidden="true">/</span>
@@ -33,7 +33,7 @@
         </div>
     </section>
 
-    <section class="relative z-10 mx-auto -mt-16 max-w-7xl px-5 pb-24 sm:px-8">
+    <section class="relative z-10 container-public -mt-16 pb-24">
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)] lg:items-start">
             <div class="rounded-3xl border border-[#e7dfd0] bg-white p-6 shadow-[0_28px_80px_-45px_rgba(14,59,49,.5)] sm:p-8">
                 @if ($errors->any())

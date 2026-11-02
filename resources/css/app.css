@@ -1,3 +1,77 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ==========================================================================
+   STANDAR GLOBAL CONTAINER HALAMAN PUBLIK
+   Diperuntukkan bagi semua halaman publik (landing page & halaman turunannya).
+   Setara Tailwind: mx-auto max-w-7xl px-5 sm:px-8
+   ========================================================================== */
+.container-public {
+    width: 100%;
+    max-width: 80rem; /* 1280px */
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+    box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+    .container-public {
+        padding-inline: 2rem;
+    }
+}
+
+/* ==========================================================================
+   GRID KARTU TERPUSAT
+   1 kolom mobile, 2 kolom tablet (>=768px), 3 kolom desktop (>=1024px).
+   Baris terakhir yang tidak penuh tetap sejajar di tengah, tidak menempel kiri.
+   Lebar gap dapat diatur varian dengan --cards-gap (mis. --cards-gap: 1rem).
+   ========================================================================== */
+.cards-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--cards-gap, 1.5rem);
+}
+
+.cards-grid > * {
+    flex: 0 0 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+    .cards-grid > * {
+        flex-basis: calc((100% - var(--cards-gap, 1.5rem)) / 2);
+    }
+}
+
+@media (min-width: 1024px) {
+    .cards-grid > * {
+        flex-basis: calc((100% - (var(--cards-gap, 1.5rem) * 2)) / 3);
+    }
+}
+
+/* ==========================================================================
+   GRID KARTU 2 KOLOM TERPUSAT (>=1024px)
+   Untuk daftar kartu horizontal (mis. agenda di landing page) agar baris
+   terakhir yang hanya berisi 1 kartu tetap berada di tengah.
+   ========================================================================== */
+.cards-grid-2 {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--cards-gap, 1rem);
+}
+
+.cards-grid-2 > * {
+    flex: 0 0 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+    .cards-grid-2 > * {
+        flex-basis: calc((100% - var(--cards-gap, 1rem)) / 2);
+    }
+}

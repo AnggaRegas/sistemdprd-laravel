@@ -22,6 +22,9 @@ use Illuminate\View\View;
 
 class MemberController extends Controller
 {
+    /**
+     * Menampilkan daftar anggota DPRD.
+     */
     public function index(Request $request): View
     {
         $this->authorize('viewAny', DprdMember::class);
@@ -30,20 +33,34 @@ class MemberController extends Controller
 
         $filters = [
             'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
-            'status' => $this->allowedFilter($request->query('status'), ['active', 'inactive']),
+            'status' => $this->allowedFilter(
+                $request->query('status'),
+                ['active', 'inactive']
+            ),
             'partai' => Str::limit(trim((string) $request->query('partai')), 100, ''),
             'kecamatan' => Str::limit(trim((string) $request->query('kecamatan')), 100, ''),
-            'staff' => $this->allowedFilter($request->query('staff'), ['assigned', 'unassigned']),
+            'staff' => $this->allowedFilter(
+                $request->query('staff'),
+                ['assigned', 'unassigned']
+            ),
         ];
 
         $baseQuery = DprdMember::query()->visibleTo($user);
 
         $query = (clone $baseQuery)
-            ->with(['staffReference.account', 'staff', 'region'])
-            ->withCount(['arsips', 'laporan']);
+            ->with([
+                'staffReference.account',
+                'staff',
+                'region',
+            ])
+            ->withCount([
+                'arsips',
+                'laporan',
+            ]);
 
+        // Pencarian anggota DPRD dan staf pendamping.
         if ($filters['q'] !== '') {
-            $needle = '%'.Str::lower($filters['q']).'%';
+            $needle = '%' . Str::lower($filters['q']) . '%';
 
             $query->where(function ($query) use ($needle) {
                 $query->whereRaw('LOWER(kode) LIKE ?', [$needle])
@@ -60,26 +77,33 @@ class MemberController extends Controller
             });
         }
 
+        // Filter status anggota.
         if ($filters['status'] === 'active') {
             $query->where('is_active', true);
         } elseif ($filters['status'] === 'inactive') {
             $query->where('is_active', false);
         }
 
+        // Filter partai.
         if ($filters['partai'] !== '') {
             $query->where('partai', $filters['partai']);
         }
 
+        // Filter kecamatan.
         if ($filters['kecamatan'] !== '') {
             $query->where('kecamatan', $filters['kecamatan']);
         }
 
+        // Filter penugasan staf.
+        // Tidak menggunakan kolom staff_id pada tabel dprd_members.
         if ($filters['staff'] === 'assigned') {
             $query->where(function ($query) {
-                $query->whereNotNull('staff_id')->orWhereHas('staff');
+                $query->whereHas('staffReference')
+                    ->orWhereHas('staff');
             });
         } elseif ($filters['staff'] === 'unassigned') {
-            $query->whereNull('staff_id')->whereDoesntHave('staff');
+            $query->whereDoesntHave('staffReference')
+                ->whereDoesntHave('staff');
         }
 
         $filteredTotal = (clone $query)->count();
@@ -91,6 +115,7 @@ class MemberController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+        // Daftar partai untuk filter.
         $parties = (clone $baseQuery)
             ->whereNotNull('partai')
             ->where('partai', '<>', '')
@@ -99,6 +124,7 @@ class MemberController extends Controller
             ->pluck('partai')
             ->all();
 
+        // Daftar kecamatan untuk filter.
         $kecamatanOptions = (clone $baseQuery)
             ->whereNotNull('kecamatan')
             ->where('kecamatan', '<>', '')
@@ -107,13 +133,24 @@ class MemberController extends Controller
             ->pluck('kecamatan')
             ->all();
 
+        // Ringkasan data anggota.
         $summary = [
             'total' => (clone $baseQuery)->count(),
-            'active' => (clone $baseQuery)->where('is_active', true)->count(),
-            'staff' => (clone $baseQuery)->where(function ($query) {
-                $query->whereNotNull('staff_id')->orWhereHas('staff');
-            })->count(),
-            'archives' => Arsip::query()->visibleTo($user)->count(),
+
+            'active' => (clone $baseQuery)
+                ->where('is_active', true)
+                ->count(),
+
+            'staff' => (clone $baseQuery)
+                ->where(function ($query) {
+                    $query->whereHas('staffReference')
+                        ->orWhereHas('staff');
+                })
+                ->count(),
+
+            'archives' => Arsip::query()
+                ->visibleTo($user)
+                ->count(),
         ];
 
         return view('members.index', [
@@ -131,6 +168,9 @@ class MemberController extends Controller
         ]);
     }
 
+    /**
+     * Menampilkan form tambah anggota.
+     */
     public function create(Request $request): View
     {
         $this->authorize('create', DprdMember::class);
@@ -146,12 +186,21 @@ class MemberController extends Controller
         ]);
     }
 
-    public function store(MemberRequest $request, StaffAssignmentService $staffAssignment): RedirectResponse
-    {
+    /**
+     * Menyimpan anggota DPRD baru.
+     */
+    public function store(
+        MemberRequest $request,
+        StaffAssignmentService $staffAssignment
+    ): RedirectResponse {
         $validated = $request->validated();
 
         try {
-            $member = DB::transaction(function () use ($validated, $request, $staffAssignment) {
+            $member = DB::transaction(function () use (
+                $validated,
+                $request,
+                $staffAssignment
+            ) {
                 $member = DprdMember::query()->create([
                     'kode' => $validated['kode'],
                     'nama_lengkap' => $validated['nama_lengkap'],
@@ -164,8 +213,11 @@ class MemberController extends Controller
                     'is_active' => (bool) $validated['is_active'],
                 ]);
 
-                if (! empty($validated['staff_id'])) {
-                    $staff = DprdStaff::query()->active()->findOrFail($validated['staff_id']);
+                // Penugasan staf dilakukan melalui service.
+                if (!empty($validated['staff_id'])) {
+                    $staff = DprdStaff::query()
+                        ->active()
+                        ->findOrFail($validated['staff_id']);
 
                     $staffAssignment->assignToMember(
                         $member,
@@ -186,8 +238,12 @@ class MemberController extends Controller
             'anggota.created',
             $request->user(),
             $member,
-            ['kode' => $member->kode, 'is_active' => $member->is_active],
-            'Anggota DPRD '.$member->nama_lengkap.' ('.$member->kode.') ditambahkan.'
+            [
+                'kode' => $member->kode,
+                'is_active' => $member->is_active,
+            ],
+            'Anggota DPRD ' . $member->nama_lengkap .
+            ' (' . $member->kode . ') ditambahkan.'
         );
 
         return redirect()
@@ -195,16 +251,31 @@ class MemberController extends Controller
             ->with('success', 'Anggota DPRD berhasil ditambahkan.');
     }
 
+    /**
+     * Menampilkan form edit anggota.
+     */
     public function edit(Request $request, DprdMember $member): View
     {
         $this->authorize('update', $member);
 
-        $member->load(['staffReference.account', 'staff', 'region']);
+        $member->load([
+            'staffReference.account',
+            'staff',
+            'region',
+        ]);
 
-        $assignmentHistories = $member->staff_id
+        // Mengambil ID staf melalui relasi, bukan kolom staff_id
+        // pada tabel dprd_members.
+        $staffReferenceId = $member->staffReference?->getKey();
+
+        $assignmentHistories = $staffReferenceId
             ? StaffAssignmentHistory::query()
-                ->with(['assignedBy', 'member', 'previousMember'])
-                ->where('dprd_staff_id', $member->staff_id)
+                ->with([
+                    'assignedBy',
+                    'member',
+                    'previousMember',
+                ])
+                ->where('dprd_staff_id', $staffReferenceId)
                 ->latest('id')
                 ->limit(8)
                 ->get()
@@ -220,14 +291,25 @@ class MemberController extends Controller
         ]);
     }
 
-    public function update(MemberRequest $request, DprdMember $member, StaffAssignmentService $staffAssignment): RedirectResponse
-    {
+    /**
+     * Memperbarui data anggota DPRD.
+     */
+    public function update(
+        MemberRequest $request,
+        DprdMember $member,
+        StaffAssignmentService $staffAssignment
+    ): RedirectResponse {
         $this->authorize('update', $member);
 
         $validated = $request->validated();
 
         try {
-            DB::transaction(function () use ($member, $validated, $request, $staffAssignment) {
+            DB::transaction(function () use (
+                $member,
+                $validated,
+                $request,
+                $staffAssignment
+            ) {
                 $member->update([
                     'kode' => $validated['kode'],
                     'nama_lengkap' => $validated['nama_lengkap'],
@@ -240,8 +322,10 @@ class MemberController extends Controller
                     'is_active' => (bool) $validated['is_active'],
                 ]);
 
-                $staff = ! empty($validated['staff_id'])
-                    ? DprdStaff::query()->active()->findOrFail($validated['staff_id'])
+                $staff = !empty($validated['staff_id'])
+                    ? DprdStaff::query()
+                        ->active()
+                        ->findOrFail($validated['staff_id'])
                     : null;
 
                 $staffAssignment->assignToMember(
@@ -260,8 +344,11 @@ class MemberController extends Controller
             'anggota.updated',
             $request->user(),
             $member,
-            ['kode' => $member->kode, 'is_active' => $member->is_active],
-            'Data anggota DPRD '.$member->nama_lengkap.' diperbarui.'
+            [
+                'kode' => $member->kode,
+                'is_active' => $member->is_active,
+            ],
+            'Data anggota DPRD ' . $member->nama_lengkap . ' diperbarui.'
         );
 
         return redirect()
@@ -269,31 +356,44 @@ class MemberController extends Controller
             ->with('success', 'Data anggota DPRD berhasil diperbarui.');
     }
 
-    public function toggleStatus(Request $request, DprdMember $member): RedirectResponse
-    {
+    /**
+     * Mengaktifkan atau menonaktifkan anggota.
+     */
+    public function toggleStatus(
+        Request $request,
+        DprdMember $member
+    ): RedirectResponse {
         $this->authorize('update', $member);
 
         $member->update([
-            'is_active' => ! $member->is_active,
+            'is_active' => !$member->is_active,
         ]);
 
         $message = $member->is_active
-            ? 'Anggota '.$member->nama_lengkap.' berhasil diaktifkan.'
-            : 'Anggota '.$member->nama_lengkap.' berhasil dinonaktifkan. Riwayat arsip dan laporan tetap tersimpan.';
+            ? 'Anggota ' . $member->nama_lengkap . ' berhasil diaktifkan.'
+            : 'Anggota ' . $member->nama_lengkap .
+              ' berhasil dinonaktifkan. Riwayat arsip dan laporan tetap tersimpan.';
 
         AktivitasSistem::catat(
             'anggota.status.changed',
             $request->user(),
             $member,
-            ['is_active' => $member->is_active],
+            [
+                'is_active' => $member->is_active,
+            ],
             $message
         );
 
         return back()->with('success', $message);
     }
 
-    public function destroy(Request $request, DprdMember $member): RedirectResponse
-    {
+    /**
+     * Menghapus anggota DPRD secara soft delete.
+     */
+    public function destroy(
+        Request $request,
+        DprdMember $member
+    ): RedirectResponse {
         $this->authorize('delete', $member);
 
         $archiveCount = $member->arsips()->withTrashed()->count();
@@ -304,21 +404,22 @@ class MemberController extends Controller
             $details = [];
 
             if ($archiveCount > 0) {
-                $details[] = $archiveCount.' arsip';
+                $details[] = $archiveCount . ' arsip';
             }
 
             if ($reportCount > 0) {
-                $details[] = $reportCount.' laporan masyarakat';
+                $details[] = $reportCount . ' laporan masyarakat';
             }
 
             if ($staffCount > 0) {
-                $details[] = $staffCount.' akun staf';
+                $details[] = $staffCount . ' akun staf';
             }
 
             return back()->with(
                 'error',
-                'Anggota tidak dapat dihapus karena masih terkait dengan '.implode(', ', $details)
-                .'. Nonaktifkan anggota melalui tombol status agar seluruh riwayat tetap tersimpan.'
+                'Anggota tidak dapat dihapus karena masih terkait dengan ' .
+                implode(', ', $details) .
+                '. Nonaktifkan anggota melalui tombol status agar seluruh riwayat tetap tersimpan.'
             );
         }
 
@@ -330,8 +431,11 @@ class MemberController extends Controller
             'anggota.deleted',
             $request->user(),
             $member,
-            ['kode' => $member->kode],
-            'Anggota DPRD '.$member->nama_lengkap.' dihapus (soft delete).'
+            [
+                'kode' => $member->kode,
+            ],
+            'Anggota DPRD ' . $member->nama_lengkap .
+            ' dihapus (soft delete).'
         );
 
         return redirect()
@@ -339,12 +443,19 @@ class MemberController extends Controller
             ->with('success', 'Anggota DPRD berhasil dihapus. Data riwayat tetap tersimpan.');
     }
 
+    /**
+     * Memvalidasi filter yang diperbolehkan.
+     */
     private function allowedFilter(mixed $value, array $allowed): string
     {
-        return is_string($value) && in_array($value, $allowed, true) ? $value : '';
+        return is_string($value) && in_array($value, $allowed, true)
+            ? $value
+            : '';
     }
 
     /**
+     * Mengambil daftar partai.
+     *
      * @return array<int, string>
      */
     private function partyOptions(User $user): array
@@ -360,6 +471,8 @@ class MemberController extends Controller
     }
 
     /**
+     * Mengambil daftar kecamatan.
+     *
      * @return array<int, string>
      */
     private function kecamatanOptions(User $user): array
@@ -375,7 +488,7 @@ class MemberController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, DprdRegion>
+     * Mengambil daftar wilayah aktif.
      */
     private function regionOptions()
     {
@@ -385,6 +498,36 @@ class MemberController extends Controller
             ->get(['id', 'name']);
     }
 
+    /**
+     * Mengambil daftar staf aktif untuk form anggota.
+     *
+     * Staf yang sedang terhubung dengan anggota tetap ditampilkan
+     * pada halaman edit meskipun status staf sudah tidak aktif.
+     */
+    private function staffOptions(?DprdMember $member = null)
+    {
+        $query = DprdStaff::query()
+            ->with('account');
+
+        $currentStaffId = $member?->staffReference?->getKey();
+
+        if ($currentStaffId !== null) {
+            $query->where(function ($staffQuery) use ($currentStaffId) {
+                $staffQuery->active()
+                    ->orWhereKey($currentStaffId);
+            });
+        } else {
+            $query->active();
+        }
+
+        return $query
+            ->orderBy('nama')
+            ->get();
+    }
+
+    /**
+     * Menangani kode anggota yang duplikat.
+     */
     private function throwDuplicateCode(QueryException $exception): void
     {
         $message = $exception->getMessage();
