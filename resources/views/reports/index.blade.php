@@ -12,101 +12,26 @@
     <x-admin.page-header
         eyebrow="Aspirasi masyarakat"
         title="Laporan Masyarakat"
-        description="Pantau laporan yang masuk, status penanganan, serta anggota dan staf yang ditugaskan untuk menindaklanjuti."
+        description="Laporan yang telah didisposisikan kepada Anda beserta perkembangan tindak lanjutnya."
     />
 
-    <div class="demo-note">
-        <i class="ri-information-line" aria-hidden="true"></i>
-        <div>
-            <strong>Data sistem.</strong> Laporan pada halaman ini dibaca langsung dari database. Administrator melihat seluruh laporan, sedangkan staf pendamping hanya melihat laporan yang ditugaskan kepadanya.
-        </div>
-    </div>
-
-    <div class="app-card mb-3">
-        <div class="status-strip report-status-strip">
-            @php
-                $statusMeta = [
-                    'Baru' => ['#2c6aa0', 'ri-inbox-line'],
-                    'Menunggu Penugasan' => ['#c9a45c', 'ri-time-line'],
-                    'Ditugaskan' => ['#a9853f', 'ri-user-star-line'],
-                    'Diproses' => ['#6a56a3', 'ri-loader-4-line'],
-                    'Selesai' => ['#16794f', 'ri-checkbox-circle-line'],
-                    'Ditolak' => ['#b23a34', 'ri-close-circle-line'],
-                ];
-            @endphp
-
-            @foreach ($statusCounts as $status => $count)
-                <div class="status-strip-item">
-                    <div class="status-strip-label">
-                        <i style="background: {{ $statusMeta[$status][0] ?? '#93a09a' }};" aria-hidden="true"></i>
-                        {{ $status }}
-                    </div>
-                    <div class="status-strip-value">
-                        {{ number_format($count, 0, ',', '.') }}
-                        <small>{{ round(($count / max($totalReports, 1)) * 100) }}%</small>
-                    </div>
-                </div>
-            @endforeach
-        </div>
-    </div>
-
-    <div class="app-card filter-card">
+    <div class="app-card filter-card mb-3">
         <form method="GET" action="{{ route('laporan.index') }}" class="filter-bar" role="search">
             <div class="filter-search">
                 <i class="ri-search-line" aria-hidden="true"></i>
-                <input type="search" name="q" value="{{ $filters['q'] }}" placeholder="Cari tiket, pelapor, ringkasan, atau anggota..." aria-label="Cari laporan">
+                <input type="search" name="q" value="{{ $filters['q'] }}" placeholder="Cari nama atau isi laporan" aria-label="Cari laporan">
             </div>
-
-            <select name="status" class="filter-select" data-auto-submit aria-label="Filter status laporan">
+            <select name="status" class="filter-select" aria-label="Pilih status">
                 <option value="">Semua status</option>
                 @foreach ($statuses as $value => $label)
                     <option value="{{ $value }}" @selected($filters['status'] === $value)>{{ $label }}</option>
                 @endforeach
             </select>
-
-            <select name="kecamatan" class="filter-select" data-auto-submit aria-label="Filter kecamatan laporan">
-                <option value="">Semua kecamatan</option>
-                @foreach ($kecamatans as $kecamatan)
-                    <option value="{{ $kecamatan }}" @selected($filters['kecamatan'] === $kecamatan)>{{ $kecamatan }}</option>
-                @endforeach
-            </select>
-
-            <select name="kategori" class="filter-select" data-auto-submit aria-label="Filter kategori laporan">
-                <option value="">Semua kategori</option>
-                @foreach ($categories as $category)
-                    <option value="{{ $category }}" @selected($filters['kategori'] === $category)>{{ $category }}</option>
-                @endforeach
-            </select>
-
-            <div class="filter-date-group" role="group" aria-label="Rentang tanggal laporan">
-                <input
-                    type="date"
-                    name="tanggal_dari"
-                    value="{{ $filters['tanggal_dari'] }}"
-                    class="filter-date"
-                    aria-label="Tanggal laporan mulai"
-                    title="Tanggal laporan mulai"
-                >
-                <span class="filter-date-sep" aria-hidden="true">s.d.</span>
-                <input
-                    type="date"
-                    name="tanggal_sampai"
-                    value="{{ $filters['tanggal_sampai'] }}"
-                    class="filter-date"
-                    aria-label="Tanggal laporan sampai"
-                    title="Tanggal laporan sampai"
-                >
-            </div>
-
             <div class="filter-actions">
-                <button type="submit" class="btn btn-emerald btn-sm">
-                    <i class="ri-filter-3-line" aria-hidden="true"></i>
-                    Terapkan
-                </button>
-                <a href="{{ route('laporan.index') }}" class="filter-reset">
-                    <i class="ri-refresh-line" aria-hidden="true"></i>
-                    Reset
-                </a>
+                <button type="submit" class="btn btn-emerald">Cari laporan</button>
+                @if ($hasFilters)
+                    <a href="{{ route('laporan.index') }}" class="filter-reset">Hapus pencarian</a>
+                @endif
             </div>
         </form>
     </div>
@@ -115,140 +40,57 @@
         <div class="app-card-header">
             <div>
                 <h2 class="app-card-title">Daftar Laporan</h2>
-                <p class="app-card-subtitle">
-                    Menampilkan {{ $reports->firstItem() ?? 0 }}–{{ $reports->lastItem() ?? 0 }}
-                    dari {{ number_format($filteredTotal, 0, ',', '.') }} laporan
-                </p>
+                <p class="app-card-subtitle">{{ number_format($filteredTotal, 0, ',', '.') }} laporan ditemukan</p>
             </div>
-            <span class="status-badge status-neutral">{{ number_format($totalReports, 0, ',', '.') }} total laporan</span>
         </div>
 
         @if ($reports->isEmpty())
-            @if ($totalReports === 0)
-                <x-admin.empty-state
-                    icon="ri-chat-3-line"
-                    title="Belum ada laporan"
-                    description="Belum ada laporan masyarakat yang masuk ke sistem."
-                />
-            @else
-                <x-admin.empty-state
-                    icon="ri-search-eye-line"
-                    title="Laporan tidak ditemukan"
-                    description="Tidak ada laporan yang cocok dengan pencarian atau filter Anda. Coba kata kunci lain atau hapus filter."
-                >
-                    <a href="{{ route('laporan.index') }}" class="btn btn-outline-soft btn-sm">
-                        <i class="ri-refresh-line" aria-hidden="true"></i>
-                        Hapus filter
-                    </a>
-                </x-admin.empty-state>
-            @endif
+            <x-admin.empty-state
+                icon="ri-chat-3-line"
+                title="Belum ada laporan"
+                description="Laporan yang didisposisikan kepada Anda akan tampil di sini."
+            />
         @else
             <div class="table-responsive">
-                <table class="table-modern">
+                <table class="table-modern report-simple-table">
                     <thead>
                         <tr>
-                            <th scope="col">Laporan</th>
-                            <th scope="col" class="d-none d-md-table-cell">Kecamatan</th>
-                            <th scope="col" class="d-none d-lg-table-cell">Komisi</th>
-                            <th scope="col" class="d-none d-sm-table-cell">Tanggal</th>
-                            <th scope="col" class="d-none d-xl-table-cell">Penanggung Jawab</th>
+                            <th scope="col">Nama pelapor</th>
+                            <th scope="col" class="d-none d-md-table-cell">Anggota DPRD</th>
+                            <th scope="col">Isi aspirasi</th>
                             <th scope="col">Status</th>
-                            <th scope="col" class="text-end">Aksi</th>
+                            <th scope="col"><span class="visually-hidden">Tindakan</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($reports as $report)
                             @php
-                                $detailUrl = route('laporan.show', [
-                                    'laporan' => $report['id'],
-                                    'return_to' => $returnUrl,
-                                ]);
+                                $statusTone = match ($report['status_value']) {
+                                    'selesai' => 'success',
+                                    'diproses', 'ditugaskan' => 'info',
+                                    'ditolak' => 'danger',
+                                    default => 'warning',
+                                };
                             @endphp
                             <tr>
                                 <td>
-                                    <span class="cell-title" title="{{ $report['ringkasan'] }}">{{ $report['ringkasan'] }}</span>
-                                    <span class="cell-sub">{{ $report['tiket'] }} &middot; {{ $report['pelapor'] }}</span>
+                                    <strong>{{ $report['pelapor'] }}</strong>
+                                    <span class="cell-sub d-block d-md-none">{{ $report['kecamatan'] }} · {{ \App\Support\PortalData::date($report['tanggal']) }}</span>
+                                    <span class="cell-sub d-block text-truncate" style="max-width: 220px;" title="{{ $report['alamat'] }}">{{ $report['alamat'] }}</span>
                                 </td>
-                                <td class="d-none d-md-table-cell"><span class="cell-muted">{{ $report['kecamatan'] }}</span></td>
-                                <td class="d-none d-lg-table-cell">
-                                    <span class="cell-muted">{{ $report['komisi_efektif'] ?: 'Belum terklasifikasi' }}</span>
-                                    @if ($report['klasifikasi_komisi'] && ! $report['komisi_final'])
-                                        <span class="cell-sub">Rekomendasi · {{ $report['klasifikasi_status_label'] }}</span>
-                                    @elseif ($report['komisi_final'])
-                                        <span class="cell-sub">Komisi final</span>
+                                <td class="d-none d-md-table-cell"><span class="cell-muted">{{ $report['anggota'] }}</span></td>
+                                <td class="report-summary-cell">
+                                    {{ $report['ringkasan'] }}
+                                    @if ($report['berpotensi_duplikat'])
+                                        <span class="status-badge status-warning d-inline-block mt-1">Berpotensi Duplikat</span>
                                     @endif
                                 </td>
-                                <td class="d-none d-sm-table-cell"><span class="cell-muted">{{ \App\Support\PortalData::date($report['tanggal']) }}</span></td>
-                                <td class="d-none d-xl-table-cell">
-                                    <div class="table-person">
-                                        <x-admin.avatar :name="$report['anggota']" tone="slate" size="sm" />
-                                        <div class="table-person-meta">
-                                            <strong>{{ $report['anggota'] }}</strong>
-                                            <span>{{ $report['staf'] }}</span>
-                                        </div>
-                                    </div>
-                                </td>
+                                <td><span class="status-badge status-{{ $statusTone }}">{{ $report['status'] }}</span></td>
                                 <td>
-                                    <x-admin.status-badge :status="$report['status']" />
-                                    @if ($report['klasifikasi_status'] && ! $report['komisi_final'])
-                                        <span class="status-badge {{ $report['klasifikasi_status'] === \App\Models\LaporanMasyarakat::KLASIFIKASI_DIREKOMENDASIKAN ? 'status-success' : 'status-warning' }} mt-1">
-                                            {{ $report['klasifikasi_status_label'] }}
-                                        </span>
-                                    @endif
-                                </td>
-                                <td>
-                                    <div class="table-actions">
-                                        <a href="{{ $detailUrl }}"
-                                           class="action-menu-btn"
-                                           aria-label="Lihat detail laporan {{ $report['tiket'] }}">
-                                            <i class="ri-eye-line" aria-hidden="true"></i>
-                                        </a>
-
-                                        @if ($report['lampiran'])
-                                            <a href="{{ route('laporan.lampiran', $report['id']) }}"
-                                               class="action-menu-btn"
-                                               aria-label="Unduh lampiran laporan {{ $report['tiket'] }}">
-                                                <i class="ri-attachment-2" aria-hidden="true"></i>
-                                            </a>
-                                        @endif
-
-                                        @if (auth()->user()->isAdministrator())
-                                            <div class="dropdown">
-                                                <button type="button" class="action-menu-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Tindakan untuk {{ $report['tiket'] }}">
-                                                    <i class="ri-more-2-fill" aria-hidden="true"></i>
-                                                </button>
-                                                <ul class="dropdown-menu dropdown-menu-end">
-                                                    <li>
-                                                        <a class="dropdown-item" href="{{ $detailUrl }}">
-                                                            <i class="ri-eye-line" aria-hidden="true"></i>
-                                                            Lihat Detail
-                                                        </a>
-                                                    </li>
-                                                    <li>
-                                                        <a class="dropdown-item" href="{{ $detailUrl }}#penugasan">
-                                                            <i class="ri-user-add-line" aria-hidden="true"></i>
-                                                            Atur Penugasan
-                                                        </a>
-                                                    </li>
-                                                    <li>
-                                                        <a class="dropdown-item" href="{{ $detailUrl }}#status">
-                                                            <i class="ri-route-line" aria-hidden="true"></i>
-                                                            Ubah Status
-                                                        </a>
-                                                    </li>
-                                                    @if ($report['lampiran'])
-                                                        <li><hr class="dropdown-divider"></li>
-                                                        <li>
-                                                            <a class="dropdown-item" href="{{ route('laporan.lampiran', $report['id']) }}">
-                                                                <i class="ri-download-2-line" aria-hidden="true"></i>
-                                                                Unduh Lampiran
-                                                            </a>
-                                                        </li>
-                                                    @endif
-                                                </ul>
-                                            </div>
-                                        @endif
-                                    </div>
+                                    <a href="{{ route('laporan.show', ['laporan' => $report['id'], 'return_to' => $returnUrl]) }}"
+                                       class="btn btn-outline-soft report-view-button">
+                                        Lihat Detail
+                                    </a>
                                 </td>
                             </tr>
                         @endforeach
@@ -257,12 +99,19 @@
             </div>
 
             <div class="table-footer">
-                <p class="table-footer-note">
-                    Menampilkan <strong>{{ $reports->firstItem() }}–{{ $reports->lastItem() }}</strong>
-                    dari <strong>{{ number_format($filteredTotal, 0, ',', '.') }}</strong> laporan
-                </p>
+                <p class="table-footer-note">Menampilkan <strong>{{ $reports->firstItem() }}–{{ $reports->lastItem() }}</strong> dari <strong>{{ number_format($filteredTotal, 0, ',', '.') }}</strong> laporan</p>
                 <x-admin.pagination :paginator="$reports" />
             </div>
         @endif
     </div>
 @endsection
+
+@push('styles')
+    <style>
+        .report-simple-table { min-width: 760px; }
+        .report-simple-table th, .report-simple-table td { padding: 15px 14px; font-size: 13px; vertical-align: middle; }
+        @media (max-width: 767.98px) { .report-simple-table { min-width: 580px; } }
+        .report-summary-cell { min-width: 220px; max-width: 420px; line-height: 1.6; }
+        .report-view-button { min-height: 40px; white-space: nowrap; }
+    </style>
+@endpush

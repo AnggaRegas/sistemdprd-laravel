@@ -121,6 +121,29 @@
                                 @enderror
                             </div>
                         </div>
+
+                        <div class="mt-5">
+                            <label for="pelapor_alamat" class="block text-[12px] font-extrabold text-[#33443e]">
+                                Alamat Lengkap <span class="text-red-600" aria-hidden="true">*</span>
+                            </label>
+                            <textarea
+                                id="pelapor_alamat"
+                                name="pelapor_alamat"
+                                rows="3"
+                                required
+                                placeholder="Contoh: Jalan Lagaligo, Kelurahan Ujung Bulu, Kecamatan Soreang"
+                                aria-describedby="pelapor_alamat_help @error('pelapor_alamat') pelapor_alamat_error @enderror"
+                                @class([
+                                    'mt-2 w-full resize-y rounded-xl border bg-[#fbfaf6] px-4 py-3 text-sm text-[#16342c] outline-none transition placeholder:text-[#9aa49f] focus:ring-2',
+                                    'border-red-400 focus:border-red-500 focus:ring-red-100' => $errors->has('pelapor_alamat'),
+                                    'border-[#e2dacb] focus:border-[#0e3b31] focus:ring-[#0e3b31]/10' => ! $errors->has('pelapor_alamat'),
+                                ])
+                            >{{ old('pelapor_alamat') }}</textarea>
+                            <p id="pelapor_alamat_help" class="mt-1.5 text-[11px] leading-5 text-[#8a948f]">Tuliskan alamat tempat tinggal Anda saat ini, termasuk jalan, kelurahan, dan kecamatan.</p>
+                            @error('pelapor_alamat')
+                                <p id="pelapor_alamat_error" class="mt-1.5 text-[11px] font-semibold leading-5 text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
 
                     <div class="border-t border-[#f0ebe0] pt-7">
@@ -183,7 +206,7 @@
                                     </option>
                                     @foreach ($members as $member)
                                         <option value="{{ $member->id }}" @selected((string) old('dprd_member_id') === (string) $member->id)>
-                                            {{ $member->nama_lengkap }}{{ $member->komisi ? ' — '.$member->komisi : '' }}
+                                            {{ $member->nama_lengkap }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -214,7 +237,6 @@
                                 name="isi"
                                 rows="8"
                                 required
-                                maxlength="5000"
                                 placeholder="Jelaskan permasalahan, lokasi kejadian jika relevan, serta harapan tindak lanjut Anda."
                                 aria-describedby="isi_help @error('isi') isi_error @enderror"
                                 @class([
@@ -223,39 +245,10 @@
                                     'border-[#e2dacb] focus:border-[#0e3b31] focus:ring-[#0e3b31]/10' => ! $errors->has('isi'),
                                 ])
                             >{{ old('isi') }}</textarea>
-                            <div class="mt-1.5 flex items-start justify-between gap-3">
-                                <p id="isi_help" class="text-[11px] leading-5 text-[#8a948f]">Sertakan lokasi kejadian jika relevan dan harapan tindak lanjut. Maksimal 5.000 karakter.</p>
-                                <span class="shrink-0 text-[10px] font-semibold text-[#a8b1ad]" data-character-count>0/5000</span>
-                            </div>
+                            <p id="isi_help" class="mt-1.5 text-[11px] leading-5 text-[#8a948f]">Sertakan lokasi kejadian jika relevan dan harapan tindak lanjut. Tuliskan secara lengkap agar mudah diverifikasi.</p>
                             @error('isi')
                                 <p id="isi_error" class="mt-1.5 text-[11px] font-semibold leading-5 text-red-600">{{ $message }}</p>
                             @enderror
-
-                            <div class="mt-4 rounded-2xl border border-[#e7dfd0] bg-[#fbf9f4] p-4">
-                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                        <p class="text-[12px] font-extrabold text-[#123b32]">Rekomendasi komisi</p>
-                                        <p class="mt-0.5 text-[11px] leading-5 text-[#75827d]">Berdasarkan aturan kata kunci berbobot. Bukan AI dan bukan keputusan final.</p>
-                                    </div>
-                                    <button type="button" data-analysis-run class="inline-flex items-center justify-center gap-2 rounded-xl border border-[#d9cfbb] bg-white px-3.5 py-2 text-[11px] font-extrabold text-[#0e3b31] transition hover:border-[#0e3b31]">
-                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                            <path d="M4 7h16M4 12h10M4 17h7"/>
-                                        </svg>
-                                        Analisis Komisi
-                                    </button>
-                                </div>
-
-                                <div class="mt-3 hidden rounded-xl border border-[#e2dacb] bg-white p-3" data-analysis-panel>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="rounded-full bg-[#e6f0eb] px-2.5 py-1 text-[10px] font-extrabold text-[#155043]" data-analysis-status></span>
-                                        <strong class="text-[12px] text-[#123b32]" data-analysis-commission></strong>
-                                    </div>
-                                    <p class="mt-2 text-[11px] leading-6 text-[#63716c]" data-analysis-reason></p>
-                                    <div class="mt-2 flex flex-wrap gap-1.5" data-analysis-keywords></div>
-                                </div>
-
-                                <p class="mt-2 hidden text-[11px] font-semibold leading-5 text-red-600" data-analysis-error></p>
-                            </div>
                         </div>
                     </div>
 
@@ -364,7 +357,7 @@
                 <div class="rounded-3xl border border-[#e7dfd0] bg-white p-6">
                     <h2 class="text-[13px] font-extrabold text-[#123b32]">Setelah dikirim</h2>
                     <p class="mt-2 text-[12px] leading-6 text-[#63716c]">
-                        Aspirasi akan masuk dengan status <strong class="font-extrabold text-[#a17f3e]">Menunggu Penugasan</strong> dan ditinjau oleh administrator sebelum ditindaklanjuti. Rekomendasi komisi tidak menugaskan staf secara otomatis.
+                        Aspirasi akan masuk dengan status <strong class="font-extrabold text-[#a17f3e]">Menunggu Verifikasi</strong> dan ditinjau oleh administrator sebelum diteruskan kepada staf pendamping anggota DPRD yang Anda pilih.
                     </p>
                 </div>
             </aside>
@@ -379,25 +372,6 @@
             const regionSelect = document.getElementById('dprd_region_id');
             const memberSelect = document.getElementById('dprd_member_id');
             const memberEmpty = document.querySelector('[data-member-empty]');
-            const textarea = document.getElementById('isi');
-            const counter = document.querySelector('[data-character-count]');
-            const analysisButton = document.querySelector('[data-analysis-run]');
-            const analysisPanel = document.querySelector('[data-analysis-panel]');
-            const analysisStatus = document.querySelector('[data-analysis-status]');
-            const analysisCommission = document.querySelector('[data-analysis-commission]');
-            const analysisReason = document.querySelector('[data-analysis-reason]');
-            const analysisKeywords = document.querySelector('[data-analysis-keywords]');
-            const analysisError = document.querySelector('[data-analysis-error]');
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-
-            if (counter && textarea) {
-                const updateCounter = function () {
-                    counter.textContent = textarea.value.length.toLocaleString('id-ID') + '/5000';
-                };
-
-                textarea.addEventListener('input', updateCounter);
-                updateCounter();
-            }
 
             function setMemberPlaceholder(text) {
                 if (!memberSelect) {
@@ -466,7 +440,7 @@
                     data.members.forEach(function (member) {
                         const option = document.createElement('option');
                         option.value = member.id;
-                        option.textContent = member.name + (member.komisi ? ' — ' + member.komisi : '');
+                        option.textContent = member.name;
                         memberSelect.appendChild(option);
                     });
 
@@ -497,82 +471,6 @@
 
             if (form && memberSelect && regionSelect && !regionSelect.value) {
                 resetMemberSelect('Pilih kecamatan/dapil terlebih dahulu');
-            }
-
-            async function runAnalysis() {
-                if (!textarea || !analysisPanel || !analysisButton) {
-                    return;
-                }
-
-                if (textarea.value.trim().length < 20) {
-                    if (analysisError) {
-                        analysisError.textContent = 'Tulis isi aspirasi minimal 20 karakter sebelum analisis.';
-                        analysisError.classList.remove('hidden');
-                    }
-                    return;
-                }
-
-                analysisButton.disabled = true;
-                analysisButton.textContent = 'Menganalisis...';
-                if (analysisError) {
-                    analysisError.classList.add('hidden');
-                }
-
-                try {
-                    const response = await fetch('{{ route('aspirasi.analyze') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                        },
-                        body: JSON.stringify({ isi: textarea.value }),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('Analisis gagal.');
-                    }
-
-                    const data = await response.json();
-                    analysisPanel.classList.remove('hidden');
-                    analysisStatus.textContent = data.status_label || 'Perlu Ditinjau';
-                    analysisCommission.textContent = data.komisi_nama || 'Belum ada rekomendasi komisi';
-                    analysisReason.textContent = data.alasan || '';
-                    analysisKeywords.innerHTML = '';
-
-                    (data.keywords || []).forEach(function (term) {
-                        const chip = document.createElement('span');
-                        chip.className = 'rounded-full bg-[#f1ecdf] px-2.5 py-1 text-[10px] font-semibold text-[#7a6a48]';
-                        chip.textContent = term;
-                        analysisKeywords.appendChild(chip);
-                    });
-                } catch (error) {
-                    if (analysisError) {
-                        analysisError.textContent = 'Rekomendasi komisi belum dapat dihitung. Anda tetap dapat mengirim aspirasi.';
-                        analysisError.classList.remove('hidden');
-                    }
-                } finally {
-                    analysisButton.disabled = false;
-                    analysisButton.textContent = 'Analisis Komisi';
-                }
-            }
-
-            if (analysisButton) {
-                analysisButton.addEventListener('click', runAnalysis);
-            }
-
-            let analysisTimer = null;
-
-            if (textarea && analysisButton) {
-                textarea.addEventListener('input', function () {
-                    window.clearTimeout(analysisTimer);
-
-                    if (textarea.value.trim().length < 20) {
-                        return;
-                    }
-
-                    analysisTimer = window.setTimeout(runAnalysis, 1200);
-                });
             }
         });
     </script>

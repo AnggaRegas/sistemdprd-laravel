@@ -127,6 +127,8 @@ class LaporanMasyarakat extends Model
         'dprd_member_id',
         'assigned_to',
         'assigned_at',
+        'disetujui_oleh',
+        'disetujui_at',
         'status',
         'tanggal_laporan',
         'ditutup_at',
@@ -144,6 +146,7 @@ class LaporanMasyarakat extends Model
         'klasifikasi_skor_detail' => 'array',
         'klasifikasi_dianalisis_at' => 'datetime',
         'komisi_final_ditetapkan_at' => 'datetime',
+        'disetujui_at' => 'datetime',
     ];
 
     public function member(): BelongsTo
@@ -186,6 +189,26 @@ class LaporanMasyarakat extends Model
         return $this->hasOne(LaporanPenugasan::class, 'laporan_masyarakat_id')
             ->whereNull('released_at')
             ->latestOfMany();
+    }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'disetujui_oleh');
+    }
+
+    public function similarityResults(): HasMany
+    {
+        return $this->hasMany(LaporanSimilarityResult::class, 'laporan_masyarakat_id');
+    }
+
+    public function comparedSimilarityResults(): HasMany
+    {
+        return $this->hasMany(LaporanSimilarityResult::class, 'compared_laporan_masyarakat_id');
+    }
+
+    public function getDisetujuiAtLabelAttribute(): string
+    {
+        return \App\Support\PortalData::dateTime($this->disetujui_at);
     }
 
     public function getStatusLabelAttribute(): string

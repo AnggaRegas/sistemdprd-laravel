@@ -52,7 +52,7 @@ class MemberManagementTest extends TestCase
 
         $this->assertDatabaseHas('dprd_members', [
             'kode' => 'DWN-01',
-            'nama_lengkap' => 'Ir. H. KAHARUDDIN KADIR, M.Si.',
+            'nama_lengkap' => 'Ir. H. KAHARUDDIN KADIR, M.Si',
         ]);
         $this->assertDatabaseHas('dprd_members', [
             'kode' => 'DWN-25',
@@ -81,7 +81,7 @@ class MemberManagementTest extends TestCase
             ->assertSee('Staf Pendamping')
             ->assertSee('Aksi & Arsip')
             ->assertSee('DWN-01')
-            ->assertSee('Ir. H. KAHARUDDIN KADIR, M.Si.')
+            ->assertSee('Ir. H. KAHARUDDIN KADIR, M.Si')
             ->assertSee('Buka Arsip')
             ->assertSee(route('anggota.arsip', $firstMember), false)
             ->assertSee('Belum ditugaskan');
@@ -498,5 +498,52 @@ class MemberManagementTest extends TestCase
         $this->actingAs($staff)
             ->get(route('anggota.arsip', $memberB))
             ->assertForbidden();
+    }
+
+    public function test_member_folder_shows_pokir_and_reses_submenus_of_assigned_member(): void
+    {
+        $memberA = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Folder Staf',
+        ]);
+        $memberB = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Folder Lain',
+        ]);
+        $staff = User::factory()->staff($memberA)->create();
+
+        $pokir = KategoriArsip::factory()->create([
+            'nama' => 'POKOK-POKOK PIKIRAN',
+            'kode' => 'POKIR',
+            'deskripsi' => 'Arsip resmi dokumen pokok-pokok pikiran anggota DPRD.',
+        ]);
+        $reses = KategoriArsip::factory()->create([
+            'nama' => 'HASIL RESES',
+            'kode' => 'RESES',
+            'deskripsi' => 'Arsip resmi dokumen hasil kegiatan reses anggota DPRD.',
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('anggota.show', $memberA))
+            ->assertOk()
+            ->assertSee('Anggota Folder Staf')
+            ->assertSee('Pokir')
+            ->assertSee('Hasil Reses')
+            ->assertSee('Buka Pokir')
+            ->assertSee('Buka Hasil Reses')
+            ->assertSee(route('anggota.arsip.tahun', [$memberA, $pokir]), false)
+            ->assertSee(route('anggota.arsip.tahun', [$memberA, $reses]), false)
+            ->assertSee(route('anggota.index'), false);
+
+        $this->actingAs($staff)
+            ->get(route('anggota.show', $memberB))
+            ->assertForbidden();
+
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->get(route('anggota.show', $memberB))
+            ->assertOk()
+            ->assertSee('Anggota Folder Lain')
+            ->assertSee('Pokir')
+            ->assertSee('Hasil Reses');
     }
 }

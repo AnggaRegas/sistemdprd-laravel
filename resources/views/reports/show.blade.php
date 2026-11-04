@@ -9,21 +9,30 @@
 
 @section('title', 'Detail Laporan '.$report->nomor_tiket)
 
+@php
+    $closedStatuses = [
+        \App\Models\LaporanMasyarakat::STATUS_SELESAI,
+        \App\Models\LaporanMasyarakat::STATUS_DITOLAK,
+    ];
+    $isClosed = in_array($report->status, $closedStatuses, true);
+    $needApproval = $isAdministrator && ! $report->disetujui_at && ! $isClosed;
+@endphp
+
 @section('content')
     <x-admin.page-header
         eyebrow="Detail laporan masyarakat"
         :title="$report->ringkasan"
-        :description="'Tiket '.$report->nomor_tiket.' · '.$report->kecamatan_label.' · '.$report->komisi_efektif_label"
+        :description="'Tiket '.$report->nomor_tiket.' · '.$report->kecamatan_label"
     >
         <a href="{{ $returnUrl }}" class="btn btn-outline-soft">
             <i class="ri-arrow-left-line" aria-hidden="true"></i>
             Kembali ke Daftar Laporan
         </a>
 
-        @if ($isAdministrator)
-            <a href="#penugasan" class="btn btn-gold">
-                <i class="ri-user-add-line" aria-hidden="true"></i>
-                Atur Penugasan
+        @if ($needApproval)
+            <a href="#persetujuan" class="btn btn-gold">
+                <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                Verifikasi &amp; Disposisi
             </a>
         @endif
     </x-admin.page-header>
@@ -34,7 +43,7 @@
                 <div class="app-card-header">
                     <div>
                         <h2 class="app-card-title">Informasi Laporan</h2>
-                        <p class="app-card-subtitle">Data pelapor, klasifikasi, dan status penanganan.</p>
+                        <p class="app-card-subtitle">Data pelapor dan status penanganan.</p>
                     </div>
                     <x-admin.status-badge :status="$report->status_label" />
                 </div>
@@ -60,12 +69,16 @@
                                     <dd>{{ $report->kecamatan_label }}</dd>
                                 </div>
                                 <div class="detail-row">
-                                    <dt>Komisi rekomendasi</dt>
-                                    <dd>{{ $report->klasifikasi_komisi_label }}</dd>
-                                </div>
-                                <div class="detail-row">
-                                    <dt>Komisi final</dt>
-                                    <dd>{{ $report->komisi_final_label }}</dd>
+                                    <dt>Status verifikasi</dt>
+                                    <dd>
+                                        @if ($report->disetujui_at)
+                                            Disetujui{{ $report->approvedBy ? ' oleh '.$report->approvedBy->name : '' }}
+                                        @elseif ($isClosed)
+                                            Diverifikasi ({{ $report->status_label }})
+                                        @else
+                                            Menunggu verifikasi administrator
+                                        @endif
+                                    </dd>
                                 </div>
                             </dl>
                         </div>
@@ -82,15 +95,25 @@
                                 </div>
                                 <div class="detail-row">
                                     <dt>Alamat</dt>
-                                    <dd>{{ $report->pelapor_alamat ?: '—' }}</dd>
+                                    <dd class="text-break">{{ $report->pelapor_alamat ?: '—' }}</dd>
                                 </div>
                                 <div class="detail-row">
-                                    <dt>Anggota DPRD</dt>
+                                    <dt>Anggota DPRD tujuan</dt>
                                     <dd>{{ $report->member?->nama_lengkap ?: 'Belum ditentukan' }}</dd>
                                 </div>
                                 <div class="detail-row">
                                     <dt>Staf pendamping</dt>
-                                    <dd>{{ $report->assignee?->name ?: 'Belum ditugaskan' }}</dd>
+                                    <dd>
+                                        @if ($report->assignee)
+                                            {{ $report->assignee->name }} <span class="cell-muted">(disposisi otomatis)</span>
+                                        @elseif ($isAdministrator && $autoStaff)
+                                            {{ $autoStaff->name }} <span class="cell-muted">(siap didisposisikan)</span>
+                                        @elseif ($isAdministrator)
+                                            Belum ada staf aktif untuk anggota ini
+                                        @else
+                                            Belum ditugaskan
+                                        @endif
+                                    </dd>
                                 </div>
                                 <div class="detail-row">
                                     <dt>Ditutup pada</dt>
@@ -99,123 +122,6 @@
                             </dl>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <div class="app-card mb-3" id="klasifikasi">
-                <div class="app-card-header">
-                    <div>
-                        <h2 class="app-card-title">Klasifikasi Komisi</h2>
-                        <p class="app-card-subtitle">Rekomendasi otomatis berbasis aturan kata kunci berbobot, bukan AI atau machine learning.</p>
-                    </div>
-                    <span class="status-badge {{ $report->klasifikasi_status === \App\Models\LaporanMasyarakat::KLASIFIKASI_DIREKOMENDASIKAN ? 'status-success' : 'status-warning' }}">
-                        {{ $report->klasifikasi_status_label }}
-                    </span>
-                </div>
-
-                <div class="app-card-body">
-                    @if ($report->hasClassification())
-                        <dl class="detail-list">
-                            <div class="detail-row">
-                                <dt>Rekomendasi</dt>
-                                <dd>{{ $report->klasifikasi_komisi_label }}</dd>
-                            </div>
-                            <div class="detail-row">
-                                <dt>Skor</dt>
-                                <dd>
-                                    {{ number_format((float) $report->klasifikasi_skor, 2, ',', '.') }}
-                                    @if ($report->klasifikasi_skor_kedua !== null)
-                                        <span class="text-muted">(komisi berikutnya {{ number_format((float) $report->klasifikasi_skor_kedua, 2, ',', '.') }})</span>
-                                    @endif
-                                </dd>
-                            </div>
-                            <div class="detail-row">
-                                <dt>Kata kunci</dt>
-                                <dd>
-                                    @forelse (collect($report->klasifikasi_keywords)->pluck('term') as $term)
-                                        <span class="status-badge status-neutral mb-1">{{ $term }}</span>
-                                    @empty
-                                        —
-                                    @endforelse
-                                </dd>
-                            </div>
-                            <div class="detail-row">
-                                <dt>Metode</dt>
-                                <dd>{{ $report->klasifikasi_metode ?: '—' }}</dd>
-                            </div>
-                            <div class="detail-row">
-                                <dt>Dianalisis</dt>
-                                <dd>{{ $report->klasifikasi_dianalisis_at ? \App\Support\PortalData::dateTime($report->klasifikasi_dianalisis_at) : '—' }}</dd>
-                            </div>
-                        </dl>
-
-                        @if ($report->klasifikasi_alasan)
-                            <p class="mb-0 mt-2 text-muted" style="font-size: 11px; line-height: 1.7;">
-                                {{ $report->klasifikasi_alasan }}
-                            </p>
-                        @endif
-                    @else
-                        <p class="mb-0 text-muted" style="font-size: 11px;">
-                            Laporan ini belum memiliki hasil klasifikasi otomatis. Administrator tetap dapat menetapkan komisi secara manual.
-                        </p>
-                    @endif
-
-                    @if ($report->komisiFinal)
-                        <div class="soft-divider"></div>
-                        <p class="mb-0" style="font-size: 11px; line-height: 1.7;">
-                            <strong>Komisi final: {{ $report->komisiFinal->name }}.</strong>
-                            Ditetapkan oleh {{ $report->komisiFinalOleh?->name ?: 'Administrator' }}
-                            pada {{ $report->komisi_final_ditetapkan_at ? \App\Support\PortalData::dateTime($report->komisi_final_ditetapkan_at) : '—' }}.
-                        </p>
-                    @endif
-
-                    @if ($isAdministrator)
-                        @if ($errors->commission->any())
-                            <div class="alert alert-danger app-alert mt-3 mb-0" role="alert">
-                                <i class="ri-error-warning-line" aria-hidden="true"></i>
-                                <div>
-                                    <strong>Komisi final belum dapat disimpan.</strong>
-                                    <ul class="mb-0 mt-1 ps-3">
-                                        @foreach ($errors->commission->all() as $message)
-                                            <li>{{ $message }}</li>
-                                        @endforeach
-                                    </ul>
-                                </div>
-                            </div>
-                        @endif
-
-                        <div class="soft-divider"></div>
-
-                        <form method="POST" action="{{ route('laporan.komisi.update', $report) }}">
-                            @csrf
-                            @method('PATCH')
-                            <input type="hidden" name="return_to" value="{{ $returnUrl }}">
-
-                            <div class="mb-3">
-                                <label class="form-label" for="commissionFinal">Komisi Final</label>
-                                <select id="commissionFinal" name="komisi_final_id" class="form-select" required>
-                                    <option value="">Pilih komisi</option>
-                                    @foreach ($commissions as $commission)
-                                        <option value="{{ $commission->id }}"
-                                            @selected((string) old('komisi_final_id', $report->komisi_final_id ?? $report->klasifikasi_komisi_id) === (string) $commission->id)>
-                                            {{ $commission->name }}{{ $commission->field ? ' — '.$commission->field : '' }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                                <p class="form-text">Pilihan awal mengikuti rekomendasi otomatis. Administrator dapat mengoreksinya.</p>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label" for="commissionNote">Catatan Keputusan</label>
-                                <textarea id="commissionNote" name="catatan" rows="2" maxlength="1000" class="form-control" placeholder="Alasan konfirmasi atau koreksi komisi (opsional).">{{ old('catatan') }}</textarea>
-                            </div>
-
-                            <button type="submit" class="btn btn-emerald w-100">
-                                <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
-                                Simpan Komisi Final
-                            </button>
-                        </form>
-                    @endif
                 </div>
             </div>
 
@@ -244,7 +150,7 @@
                 <div class="app-card-header">
                     <div>
                         <h2 class="app-card-title">Lampiran</h2>
-                        <p class="app-card-subtitle">Berkas pendukung disimpan secara privat.</p>
+                        <p class="app-card-subtitle">Berkas pendukung disimpan secara privat, hanya dapat dibuka dari halaman ini.</p>
                     </div>
                 </div>
 
@@ -266,10 +172,16 @@
                                 </div>
                             </div>
 
-                            <a href="{{ route('laporan.lampiran', $report) }}" class="btn btn-emerald btn-sm">
-                                <i class="ri-download-2-line" aria-hidden="true"></i>
-                                Unduh Lampiran
-                            </a>
+                            <div class="d-flex gap-2">
+                                <a href="{{ route('laporan.lampiran.lihat', $report) }}" target="_blank" rel="noopener" class="btn btn-outline-soft btn-sm">
+                                    <i class="ri-eye-line" aria-hidden="true"></i>
+                                    Lihat Lampiran
+                                </a>
+                                <a href="{{ route('laporan.lampiran', $report) }}" class="btn btn-emerald btn-sm">
+                                    <i class="ri-download-2-line" aria-hidden="true"></i>
+                                    Unduh Lampiran
+                                </a>
+                            </div>
                         </div>
                     @else
                         <p class="mb-0 text-muted" style="font-size: 11px;">Tidak ada lampiran pada laporan ini.</p>
@@ -277,11 +189,57 @@
                 </div>
             </div>
 
+            @if ($isAdministrator)
+                <div class="app-card mb-3">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Hasil Deteksi Kemiripan</h2>
+                            <p class="app-card-subtitle">
+                                TF-IDF dan Cosine Similarity terhadap aspirasi sebelumnya dari anggota DPRD yang sama.
+                                Ambang {{ number_format(config('aspiration_similarity.threshold', 0.80) * 100, 0, ',', '.') }}%.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="app-card-body">
+                        @if ($similarities->isEmpty())
+                            <p class="mb-0 text-muted" style="font-size: 11px;">
+                                Tidak ditemukan aspirasi terdahulu yang kemiripannya mencapai ambang. Keputusan akhir tetap berada pada administrator.
+                            </p>
+                        @else
+                            <div class="d-flex flex-column gap-2">
+                                @foreach ($similarities as $similarity)
+                                    <div class="d-flex align-items-center justify-content-between gap-3 rounded-3 border p-3 sim-row">
+                                        <div class="min-w-0">
+                                            <a href="{{ route('laporan.show', ['laporan' => $similarity->comparedLaporan, 'return_to' => $returnUrl]) }}"
+                                               class="d-block text-truncate fw-bold"
+                                               style="font-size: 12.5px; color: #193b32;">
+                                                {{ $similarity->comparedLaporan?->nomor_tiket }} — {{ $similarity->comparedLaporan?->ringkasan }}
+                                            </a>
+                                            <span class="cell-muted" style="font-size: 10px;">
+                                                {{ $similarity->comparedLaporan?->pelapor_nama }} ·
+                                                {{ \App\Support\PortalData::date($similarity->comparedLaporan?->tanggal_laporan?->toDateString()) }}
+                                            </span>
+                                        </div>
+                                        <span class="status-badge {{ $similarity->similarity_score >= 0.95 ? 'status-danger' : 'status-warning' }} flex-shrink-0">
+                                            Kemiripan {{ number_format($similarity->similarity_score * 100, 1, ',', '.') }}%
+                                        </span>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <p class="mb-0 mt-3 text-muted" style="font-size: 11px;">
+                                Indikasi ini bukan keputusan otomatis. Periksa kedua aspirasi lalu tentukan sendiri apakah keduanya duplikat atau berbeda.
+                            </p>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
             <div class="app-card">
                 <div class="app-card-header">
                     <div>
-                        <h2 class="app-card-title">Riwayat Penugasan</h2>
-                        <p class="app-card-subtitle">Catatan perpindahan staf pendamping untuk laporan ini.</p>
+                        <h2 class="app-card-title">Riwayat Disposisi</h2>
+                        <p class="app-card-subtitle">Catatan penugasan &amp; perpindahan staf pendamping untuk laporan ini.</p>
                     </div>
                 </div>
 
@@ -289,8 +247,8 @@
                     @if ($report->penugasans->isEmpty())
                         <x-admin.empty-state
                             icon="ri-user-follow-line"
-                            title="Belum ada riwayat penugasan"
-                            description="Riwayat akan muncul setelah administrator menugaskan staf pendamping."
+                            title="Belum ada disposisi"
+                            description="Riwayat akan muncul setelah laporan disetujui dan didisposisikan kepada staf pendamping."
                         />
                     @else
                         <ul class="timeline">
@@ -323,22 +281,22 @@
 
         <div class="col-xl-4">
             @if ($isAdministrator)
-                <div class="app-card mb-3" id="penugasan">
+                <div class="app-card mb-3" id="persetujuan">
                     <div class="app-card-header">
                         <div>
-                            <h2 class="app-card-title">Penugasan</h2>
-                            <p class="app-card-subtitle">Pilih anggota dan staf pendamping aktifnya.</p>
+                            <h2 class="app-card-title">Verifikasi &amp; Disposisi</h2>
+                            <p class="app-card-subtitle">Persetujuan otomatis meneruskan laporan ke staf pendamping anggota yang dituju.</p>
                         </div>
                     </div>
 
                     <div class="app-card-body">
-                        @if ($errors->assignment->any())
+                        @if ($errors->approval->any())
                             <div class="alert alert-danger app-alert mb-3" role="alert">
                                 <i class="ri-error-warning-line" aria-hidden="true"></i>
                                 <div>
-                                    <strong>Penugasan belum dapat disimpan.</strong>
+                                    <strong>Laporan belum dapat disetujui.</strong>
                                     <ul class="mb-0 mt-1 ps-3">
-                                        @foreach ($errors->assignment->all() as $message)
+                                        @foreach ($errors->approval->all() as $message)
                                             <li>{{ $message }}</li>
                                         @endforeach
                                     </ul>
@@ -346,48 +304,58 @@
                             </div>
                         @endif
 
-                        <form method="POST" action="{{ route('laporan.penugasan.update', $report) }}">
-                            @csrf
-                            @method('PATCH')
-                            <input type="hidden" name="return_to" value="{{ $returnUrl }}">
-
-                            <div class="mb-3">
-                                <label class="form-label" for="assignmentMember">Anggota DPRD</label>
-                                <select id="assignmentMember" name="dprd_member_id" class="form-select">
-                                    <option value="">Belum ditentukan</option>
-                                    @foreach ($members as $member)
-                                        <option value="{{ $member->id }}" @selected((string) old('dprd_member_id', $report->dprd_member_id) === (string) $member->id)>
-                                            {{ $member->nama_lengkap }}{{ $member->komisi ? ' — '.$member->komisi : '' }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                        @if ($report->disetujui_at)
+                            <div class="alert alert-success app-alert mb-3" role="status">
+                                <i class="ri-check-double-line" aria-hidden="true"></i>
+                                <div>
+                                    Disetujui{{ $report->approvedBy ? ' oleh '.$report->approvedBy->name : '' }}
+                                    pada {{ \App\Support\PortalData::dateTime($report->disetujui_at) }}.
+                                </div>
                             </div>
+                        @endif
 
-                            <div class="mb-3">
-                                <label class="form-label" for="assignmentStaff">Staf Pendamping</label>
-                                <select id="assignmentStaff" name="assigned_to" class="form-select">
-                                    <option value="">Belum ditugaskan</option>
-                                    @foreach ($staffOptions as $staff)
-                                        <option value="{{ $staff['id'] }}"
-                                                data-member="{{ $staff['member_id'] }}"
-                                                @selected((string) old('assigned_to', $report->assigned_to) === (string) $staff['id'])>
-                                            {{ $staff['name'] }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                                <p class="form-text">Hanya staf aktif yang terhubung ke anggota terpilih yang dapat ditugaskan.</p>
+                        @if ($report->dprd_member_id && $autoStaff)
+                            <p class="mb-3" style="font-size: 11.5px; line-height: 1.7;">
+                                Disposisi otomatis akan menugaskan
+                                <strong>{{ $autoStaff->name }}</strong> (staf pendamping aktif anggota
+                                <strong>{{ $report->member?->nama_lengkap }}</strong>).
+                            </p>
+                        @elseif ($report->dprd_member_id)
+                            <div class="alert alert-warning app-alert mb-3" role="alert">
+                                <i class="ri-alert-line" aria-hidden="true"></i>
+                                <div>
+                                    Anggota DPRD tujuan belum memiliki staf pendamping aktif. Laporan tetap dapat diverifikasi nanti setelah akun staf tersedia.
+                                </div>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label" for="assignmentNote">Catatan Penugasan</label>
-                                <textarea id="assignmentNote" name="catatan" rows="3" maxlength="1000" class="form-control" placeholder="Arahan singkat untuk staf pendamping.">{{ old('catatan') }}</textarea>
+                        @else
+                            <div class="alert alert-warning app-alert mb-3" role="alert">
+                                <i class="ri-alert-line" aria-hidden="true"></i>
+                                <div>Aspirasi ini belum menentukan anggota DPRD tujuan sehingga tidak dapat didisposisikan.</div>
                             </div>
+                        @endif
 
-                            <button type="submit" class="btn btn-emerald w-100">
-                                <i class="ri-save-3-line" aria-hidden="true"></i>
-                                Simpan Penugasan
-                            </button>
-                        </form>
+                        @if (! $isClosed)
+                            <form method="POST" action="{{ route('laporan.persetujuan', $report) }}">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="return_to" value="{{ $returnUrl }}">
+
+                                <div class="mb-3">
+                                    <label class="form-label" for="approvalNote">Catatan disposisi</label>
+                                    <textarea id="approvalNote" name="catatan" rows="3" maxlength="1000" class="form-control" placeholder="Arahan singkat untuk staf pendamping (opsional).">{{ old('catatan') }}</textarea>
+                                </div>
+
+                                <button type="submit" class="btn btn-gold w-100">
+                                    <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                                    {{ $report->disetujui_at ? 'Disposisi Ulang' : 'Setujui &amp; Disposisikan' }}
+                                </button>
+                            </form>
+                        @else
+                            <div class="alert alert-info app-alert mb-0" role="status">
+                                <i class="ri-lock-2-line" aria-hidden="true"></i>
+                                <div>Laporan sudah ditutup ({{ $report->status_label }}) sehingga tidak dapat disetujui lagi.</div>
+                            </div>
+                        @endif
                     </div>
                 </div>
 
@@ -400,33 +368,78 @@
                     </div>
 
                     <div class="app-card-body">
-                        @if (in_array($report->status, [\App\Models\LaporanMasyarakat::STATUS_SELESAI, \App\Models\LaporanMasyarakat::STATUS_DITOLAK], true))
-                            <div class="alert alert-info app-alert mb-0" role="status">
-                                <i class="ri-lock-2-line" aria-hidden="true"></i>
-                                <div>Laporan sudah ditutup dan tidak dapat diubah lagi statusnya.</div>
-                            </div>
-                        @else
-                            @if ($errors->status->any())
-                                <div class="alert alert-danger app-alert mb-3" role="alert">
-                                    <i class="ri-error-warning-line" aria-hidden="true"></i>
-                                    <div>
-                                        <strong>Status belum dapat disimpan.</strong>
-                                        <ul class="mb-0 mt-1 ps-3">
-                                            @foreach ($errors->status->all() as $message)
-                                                <li>{{ $message }}</li>
-                                            @endforeach
-                                        </ul>
-                                    </div>
+                        @if ($errors->status->any())
+                            <div class="alert alert-danger app-alert mb-3" role="alert">
+                                <i class="ri-error-warning-line" aria-hidden="true"></i>
+                                <div>
+                                    <strong>Status belum dapat disimpan.</strong>
+                                    <ul class="mb-0 mt-1 ps-3">
+                                        @foreach ($errors->status->all() as $message)
+                                            <li>{{ $message }}</li>
+                                        @endforeach
+                                    </ul>
                                 </div>
-                            @endif
+                            </div>
+                        @endif
 
-                            <form method="POST" action="{{ route('laporan.status.update', $report) }}">
+                        <form method="POST" action="{{ route('laporan.status.update', $report) }}">
+                            @csrf
+                            @method('PATCH')
+                            <input type="hidden" name="return_to" value="{{ $returnUrl }}">
+
+                            <div class="mb-3">
+                                <label class="form-label" for="reportStatus">Status Laporan</label>
+                                <select id="reportStatus" name="status" class="form-select">
+                                    @foreach ($statusOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('status', $report->status) === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label" for="reportStatusNote">Catatan Tindak Lanjut</label>
+                                <textarea id="reportStatusNote" name="catatan" rows="4" maxlength="2000" class="form-control" placeholder="Tuliskan hasil koordinasi atau alasan perubahan status.">{{ old('catatan', $report->catatan_penyelesaian) }}</textarea>
+                            </div>
+
+                            <button type="submit" class="btn btn-emerald w-100">
+                                <i class="ri-check-double-line" aria-hidden="true"></i>
+                                Simpan Status
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            @elseif ($isStaff)
+                <div class="app-card" id="status">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Tindak Lanjut Staf</h2>
+                            <p class="app-card-subtitle">Status hanya dapat bergerak dari Ditugaskan ke Diproses lalu Selesai.</p>
+                        </div>
+                    </div>
+
+                    <div class="app-card-body">
+                        @if ($errors->status->any())
+                            <div class="alert alert-danger app-alert mb-3" role="alert">
+                                <i class="ri-error-warning-line" aria-hidden="true"></i>
+                                <div>
+                                    <strong>Status belum dapat disimpan.</strong>
+                                    <ul class="mb-0 mt-1 ps-3">
+                                        @foreach ($errors->status->all() as $message)
+                                            <li>{{ $message }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            </div>
+                        @endif
+
+                        @if ($canStaffUpdateStatus)
+                            <form method="POST" action="{{ route('laporan.tindak-lanjut.update', $report) }}">
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="return_to" value="{{ $returnUrl }}">
 
                                 <div class="mb-3">
-                                    <label class="form-label" for="reportStatus">Status Laporan</label>
+                                    <label class="form-label" for="reportStatus">Status Tindak Lanjut</label>
                                     <select id="reportStatus" name="status" class="form-select">
                                         @foreach ($statusOptions as $value => $label)
                                             <option value="{{ $value }}" @selected(old('status', $report->status) === $value)>{{ $label }}</option>
@@ -436,33 +449,22 @@
 
                                 <div class="mb-3">
                                     <label class="form-label" for="reportStatusNote">Catatan Tindak Lanjut</label>
-                                    <textarea id="reportStatusNote" name="catatan" rows="4" maxlength="2000" class="form-control" placeholder="Tuliskan hasil koordinasi atau alasan perubahan status.">{{ old('catatan', $report->catatan_penyelesaian) }}</textarea>
+                                    <textarea id="reportStatusNote" name="catatan" rows="4" maxlength="2000" class="form-control" placeholder="Tuliskan perkembangan penanganan aspirasi.">{{ old('catatan', $report->catatan_penyelesaian) }}</textarea>
                                 </div>
 
                                 <button type="submit" class="btn btn-emerald w-100">
                                     <i class="ri-check-double-line" aria-hidden="true"></i>
-                                    Simpan Status
+                                    Simpan Tindak Lanjut
                                 </button>
                             </form>
-                        @endif
-                    </div>
-                </div>
-            @else
-                <div class="app-card">
-                    <div class="app-card-header">
-                        <div>
-                            <h2 class="app-card-title">Penanganan Laporan</h2>
-                            <p class="app-card-subtitle">Akses staf pendamping bersifat baca.</p>
-                        </div>
-                    </div>
-
-                    <div class="app-card-body">
-                        <div class="alert alert-info app-alert mb-0" role="status">
-                            <i class="ri-information-line" aria-hidden="true"></i>
-                            <div>
-                                Anda dapat melihat detail laporan yang ditugaskan kepada Anda. Perubahan penugasan dan status hanya dapat dilakukan administrator.
+                        @else
+                            <div class="alert alert-info app-alert mb-0" role="status">
+                                <i class="ri-information-line" aria-hidden="true"></i>
+                                <div>
+                                    Laporan ini belum siap untuk diperbarui. Anda dapat memperbarui status hanya setelah laporan didisposisikan kepada Anda oleh administrator, atau laporan sudah berstatus Selesai/Ditolak.
+                                </div>
                             </div>
-                        </div>
+                        @endif
                     </div>
                 </div>
             @endif
@@ -470,38 +472,10 @@
     </div>
 @endsection
 
-@push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const memberSelect = document.getElementById('assignmentMember');
-            const staffSelect = document.getElementById('assignmentStaff');
-
-            if (!memberSelect || !staffSelect) {
-                return;
-            }
-
-            const filterStaff = function () {
-                const memberId = memberSelect.value;
-
-                Array.from(staffSelect.options).forEach(function (option) {
-                    if (!option.value) {
-                        return;
-                    }
-
-                    const matches = option.getAttribute('data-member') === memberId;
-                    option.hidden = !matches;
-                    option.disabled = !matches;
-                });
-
-                const selected = staffSelect.selectedOptions[0];
-
-                if (selected && selected.disabled) {
-                    staffSelect.value = '';
-                }
-            };
-
-            memberSelect.addEventListener('change', filterStaff);
-            filterStaff();
-        });
-    </script>
+@push('styles')
+    <style>
+        .sim-row { border-color: #e5e9e6; background: #fbfcfa; }
+        .sim-row:hover { border-color: #b9cdc3; }
+        .report-quote { font-size: 12.5px !important; }
+    </style>
 @endpush

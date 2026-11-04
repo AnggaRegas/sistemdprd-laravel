@@ -8,7 +8,7 @@ use App\Models\AktivitasSistem;
 use App\Models\DprdMember;
 use App\Models\DprdRegion;
 use App\Models\LaporanMasyarakat;
-use App\Services\AspirationClassifier;
+use App\Services\AspirationSimilarityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -82,30 +82,25 @@ class AspirationController extends Controller
     }
 
     /**
-     * Pratinjau klasifikasi untuk form publik. Hasil akhir tetap dihitung
-     * ulang di backend saat laporan disimpan.
+     * Pratinjau klasifikasi komisi tidak lagi ditampilkan pada portal publik.
+     * Endpoint lama dipertahankan sebagai pengalihan agar tautan lama tidak
+     * menghasilkan galat, tetapi tidak memproses atau mengembalikan data.
      */
-    public function analyze(Request $request, AspirationClassifier $classifier): JsonResponse
+    public function analyze(): JsonResponse
     {
-        $validated = $request->validate([
-            'isi' => ['required', 'string', 'min:20', 'max:5000'],
-        ], [
-            'isi.required' => 'Isi aspirasi wajib diisi sebelum dianalisis.',
-            'isi.min' => 'Isi aspirasi minimal 20 karakter agar dapat dianalisis.',
-            'isi.max' => 'Isi aspirasi maksimal 5.000 karakter.',
-        ]);
-
-        $result = $classifier->analyze($validated['isi']);
-
-        return response()->json(AspirationClassifier::publicPayload($result));
+        return response()->json([
+            'message' => 'Rekomendasi komisi tidak digunakan lagi pada formulir aspirasi.',
+        ], 410);
     }
 
     /**
-     * Simpan aspirasi masyarakat tanpa login. Status awal selalu
-     * menunggu_penugasan dan tidak ada penugasan otomatis.
+     * Simpan aspirasi masyarakat tanpa login. Status awal selalu menunggu
+     * verifikasi administrator; disposisi staf dilakukan setelah persetujuan.
      */
-    public function store(PublicAspirationRequest $request, AspirationClassifier $classifier): RedirectResponse
-    {
+    public function store(
+        PublicAspirationRequest $request,
+        AspirationSimilarityService $similarity
+    ): RedirectResponse {
         $validated = $request->validated();
         $file = $request->file('lampiran');
         $storedPath = null;
@@ -123,7 +118,7 @@ class AspirationController extends Controller
         $member = DprdMember::query()
             ->whereKey($validated['dprd_member_id'])
             ->where('is_active', true)
-            ->where('dprd_region_id', $region->id)
+            ->inRegion($region->id)
             ->first();
 
         if (! $member) {
@@ -133,7 +128,7 @@ class AspirationController extends Controller
         }
 
         try {
-            $report = DB::transaction(function () use ($validated, $file, $region, $member, $classifier, &$storedPath) {
+            $report = DB::transaction(function () use ($validated, $file, $region, $member, &$storedPath) {
                 if ($file) {
                     $directory = 'laporan-masyarakat/'.now()->format('Y/m');
                     $extension = strtolower($file->extension() ?: $file->guessExtension() ?: 'bin');
@@ -156,11 +151,12 @@ class AspirationController extends Controller
                     'nomor_tiket' => $this->generateTicket(),
                     'pelapor_nama' => $validated['pelapor_nama'],
                     'pelapor_kontak' => $validated['pelapor_kontak'],
-                    'pelapor_alamat' => null,
+                    'pelapor_alamat' => $validated['pelapor_alamat'],
                     'ringkasan' => $ringkasan,
                     'isi' => $validated['isi'],
                     'kategori' => null,
                     'kecamatan' => $region->name,
+                    'dprd_region_id' => $region->id,
                     'dprd_member_id' => $member->id,
                     'assigned_to' => null,
                     'assigned_at' => null,
@@ -176,10 +172,6 @@ class AspirationController extends Controller
                     'lampiran_size' => $file ? (int) $file->getSize() : null,
                 ]);
 
-                $classification = $classifier->analyze($validated['isi']);
-                $classifier->apply($report, $classification);
-                $report->save();
-
                 AktivitasSistem::catat(
                     'laporan.dibuat',
                     null,
@@ -189,8 +181,6 @@ class AspirationController extends Controller
                         'kecamatan' => $report->kecamatan,
                         'dprd_region_id' => $region->id,
                         'dprd_member_id' => $member->id,
-                        'klasifikasi_komisi_id' => $report->klasifikasi_komisi_id,
-                        'klasifikasi_status' => $report->klasifikasi_status,
                     ],
                     'Laporan masyarakat '.$report->nomor_tiket.' diterima melalui portal publik.'
                 );
@@ -209,25 +199,32 @@ class AspirationController extends Controller
                 ->with('error', 'Aspirasi belum dapat disimpan. Silakan periksa kembali isian Anda dan coba lagi.');
         }
 
+        /*
+         * Pemeriksaan kemiripan dijalankan setelah data benar-benar tersimpan
+         * sehingga kegagalan analisis tidak membatalkan aspirasi masyarakat.
+         */
+        try {
+            $similarity->analyzeAndStore($report);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        // Nomor tiket tetap dibuat untuk kebutuhan internal, tetapi tidak pernah
+        // dikirim kembali ke antarmuka publik.
         return redirect()
             ->route('aspirasi.success')
-            ->with('aspiration_ticket', $report->nomor_tiket);
+            ->with('aspiration_submitted', true);
     }
 
     public function success(Request $request): View|RedirectResponse
     {
-        $ticket = (string) $request->session()->get('aspiration_ticket', '');
-
-        $exists = $ticket !== ''
-            && LaporanMasyarakat::query()->where('nomor_tiket', $ticket)->exists();
-
-        if (! $exists) {
+        // Konfirmasi hanya dapat dibuka tepat setelah pengiriman. Tidak ada ID,
+        // tiket, atau referensi internal yang diteruskan ke halaman publik.
+        if (! $request->session()->pull('aspiration_submitted')) {
             return redirect()->route('welcome');
         }
 
-        return view('public.aspiration.success', [
-            'ticket' => $ticket,
-        ]);
+        return view('public.aspiration.success');
     }
 
     /**
@@ -237,7 +234,7 @@ class AspirationController extends Controller
     {
         return DprdMember::query()
             ->where('is_active', true)
-            ->where('dprd_region_id', $regionId)
+            ->inRegion($regionId)
             ->orderBy('nama_lengkap')
             ->get(['id', 'nama_lengkap', 'komisi', 'dapil']);
     }

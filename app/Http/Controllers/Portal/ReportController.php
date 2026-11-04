@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ReportAssignmentRequest;
-use App\Http\Requests\ReportCommissionRequest;
 use App\Http\Requests\ReportStatusRequest;
+use App\Http\Requests\StaffReportStatusRequest;
 use App\Models\AktivitasSistem;
-use App\Models\DprdCommission;
 use App\Models\DprdMember;
 use App\Models\LaporanMasyarakat;
 use App\Models\LaporanPenugasan;
+use App\Models\LaporanSimilarityResult;
 use App\Models\User;
 use App\Support\PortalPresenter;
 use App\Support\SafeReturnUrl;
@@ -28,6 +27,14 @@ class ReportController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
+
+        /*
+         * Superadmin melihat folder laporan per anggota DPRD. Folder diambil
+         * dari data anggota aktif di database, bukan nama yang ditulis manual.
+         */
+        if ($user->isAdministrator()) {
+            return $this->administratorIndex($request);
+        }
 
         $categories = LaporanMasyarakat::query()
             ->visibleTo($user)
@@ -55,7 +62,7 @@ class ReportController extends Controller
 
         $query = LaporanMasyarakat::query()
             ->visibleTo($user)
-            ->with(['member', 'assignee', 'klasifikasiKomisi', 'komisiFinal']);
+            ->with(['member', 'assignee']);
 
         if ($filters['q'] !== '') {
             $needle = '%'.Str::lower($filters['q']).'%';
@@ -99,7 +106,7 @@ class ReportController extends Controller
             ->latest('id')
             ->paginate(10)
             ->withQueryString()
-            ->through(static fn (LaporanMasyarakat $report) => PortalPresenter::report($report));
+            ->through(static fn (LaporanMasyarakat $report) => PortalPresenter::report($report, duplicates: true));
 
         return view('reports.index', [
             'reports' => $reports,
@@ -120,6 +127,78 @@ class ReportController extends Controller
         ]);
     }
 
+    public function administratorIndex(Request $request): View
+    {
+        $selectedMemberId = (int) $request->query('anggota');
+
+        $filters = [
+            'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
+        ];
+
+        $membersQuery = DprdMember::query()
+            ->where('is_active', true)
+            ->withCount(['laporan' => fn ($query) => $query->withTrashed()])
+            ->orderBy('nama_lengkap');
+
+        if ($selectedMemberId === 0 && $filters['q'] !== '') {
+            $membersQuery->whereRaw('LOWER(nama_lengkap) LIKE ?', ['%'.Str::lower($filters['q']).'%']);
+        }
+
+        $members = $membersQuery->get();
+
+        $selectedMember = null;
+        $reports = null;
+        $filteredTotal = 0;
+        $duplicateIds = collect();
+        $returnUrl = $request->fullUrl();
+
+        if ($selectedMemberId > 0) {
+            $selectedMember = DprdMember::query()
+                ->where('is_active', true)
+                ->whereKey($selectedMemberId)
+                ->firstOrFail();
+
+            $query = $selectedMember->laporan()
+                ->withTrashed()
+                ->with(['member']);
+
+            if ($filters['q'] !== '') {
+                $needle = '%'.Str::lower($filters['q']).'%';
+
+                $query->where(function ($query) use ($needle) {
+                    $query->whereRaw('LOWER(nomor_tiket) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(pelapor_nama) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(ringkasan) LIKE ?', [$needle]);
+                });
+            }
+
+            $filteredTotal = (clone $query)->count();
+
+            $reports = $query
+                ->latest('tanggal_laporan')
+                ->latest('id')
+                ->paginate(10, ['*'], 'page')
+                ->withQueryString();
+
+            $duplicateIds = LaporanSimilarityResult::query()
+                ->whereIn('laporan_masyarakat_id', $reports->getCollection()->pluck('id'))
+                ->diAtasAmbang()
+                ->pluck('laporan_masyarakat_id')
+                ->unique();
+        }
+
+        return view('reports.admin_index', [
+            'members' => $members,
+            'selectedMember' => $selectedMember,
+            'reports' => $reports,
+            'filteredTotal' => $filteredTotal,
+            'duplicateIds' => $duplicateIds,
+            'searchQuery' => $filters['q'],
+            'hasFolderQuery' => $selectedMemberId > 0 || $filters['q'] !== '',
+            'returnUrl' => $returnUrl,
+        ]);
+    }
+
     public function show(Request $request, LaporanMasyarakat $laporan): View
     {
         $user = $request->user();
@@ -129,9 +208,7 @@ class ReportController extends Controller
             ->with([
                 'member',
                 'assignee',
-                'klasifikasiKomisi',
-                'komisiFinal',
-                'komisiFinalOleh',
+                'approvedBy',
                 'penugasans' => fn ($query) => $query
                     ->with(['user', 'assignedBy'])
                     ->latest('assigned_at')
@@ -140,48 +217,189 @@ class ReportController extends Controller
             ->findOrFail($laporan->id);
 
         $isAdministrator = $user->isAdministrator();
-        $members = collect();
-        $staffOptions = collect();
+        $autoStaff = null;
         $statusOptions = [];
 
         if ($isAdministrator) {
-            $members = DprdMember::query()
-                ->where('is_active', true)
-                ->orderBy('nama_lengkap')
-                ->get(['id', 'nama_lengkap', 'komisi']);
-
-            $staffOptions = User::query()
-                ->where('role', User::ROLE_STAF_PENDAMPING)
-                ->where('is_active', true)
-                ->whereNotNull('dprd_member_id')
-                ->orderBy('name')
-                ->get(['id', 'name', 'dprd_member_id'])
-                ->map(static fn (User $staff) => [
-                    'id' => $staff->id,
-                    'name' => $staff->name,
-                    'member_id' => $staff->dprd_member_id,
-                ])
-                ->values();
+            /*
+             * Disposisi bersifat otomatis: staf ditentukan dari relasi akun
+             * aktif yang terhubung ke anggota DPRD tujuan, bukan dari pilihan
+             * manual administrator.
+             */
+            if ($report->dprd_member_id) {
+                $autoStaff = User::query()
+                    ->where('role', User::ROLE_STAF_PENDAMPING)
+                    ->where('is_active', true)
+                    ->where('dprd_member_id', $report->dprd_member_id)
+                    ->orderBy('id')
+                    ->first(['id', 'name', 'dprd_member_id']);
+            }
 
             foreach ($report->availableStatuses() as $status) {
                 $statusOptions[$status] = LaporanMasyarakat::STATUS_LABELS[$status] ?? $status;
             }
         }
 
+        if ($user->isStaff()) {
+            foreach ([
+                LaporanMasyarakat::STATUS_DITUGASKAN,
+                LaporanMasyarakat::STATUS_DIPROSES,
+                LaporanMasyarakat::STATUS_SELESAI,
+            ] as $status) {
+                if ($report->canTransitionTo($status)) {
+                    $statusOptions[$status] = LaporanMasyarakat::STATUS_LABELS[$status] ?? $status;
+                }
+            }
+        }
+
+        $similarities = $isAdministrator
+            ? LaporanSimilarityResult::query()
+                ->where('laporan_masyarakat_id', $report->id)
+                ->diAtasAmbang()
+                ->with([
+                    'comparedLaporan',
+                    'comparedLaporan.member',
+                ])
+                ->get()
+            : collect();
+
         return view('reports.show', [
             'report' => $report,
             'isAdministrator' => $isAdministrator,
-            'members' => $members,
-            'staffOptions' => $staffOptions,
+            'autoStaff' => $autoStaff,
             'statusOptions' => $statusOptions,
-            'commissions' => $isAdministrator
-                ? DprdCommission::query()->active()->orderBy('id')->get(['id', 'name', 'field'])
-                : collect(),
+            'similarities' => $similarities,
+            'isStaff' => $user->isStaff(),
+            'canStaffUpdateStatus' => $user->isStaff() && $statusOptions !== [],
             'returnUrl' => SafeReturnUrl::reportsIndex($request->query('return_to'), $request),
         ]);
     }
 
+    /**
+     * Persetujuan administrator sekaligus disposisi otomatis kepada staf
+     * pendamping aktif dari anggota DPRD yang dipilih masyarakat.
+     */
+    public function approve(Request $request, LaporanMasyarakat $laporan): RedirectResponse
+    {
+        $administrator = $request->user();
+        abort_unless($administrator?->isAdministrator(), 403);
+
+        $validated = $request->validate([
+            'catatan' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $result = DB::transaction(function () use ($laporan, $administrator, $validated): array {
+            $report = LaporanMasyarakat::query()
+                ->lockForUpdate()
+                ->findOrFail($laporan->id);
+
+            if (in_array($report->status, [
+                LaporanMasyarakat::STATUS_SELESAI,
+                LaporanMasyarakat::STATUS_DITOLAK,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'approval' => 'Laporan yang sudah ditutup tidak dapat disetujui lagi.',
+                ])->errorBag('approval');
+            }
+
+            if (! $report->dprd_member_id) {
+                throw ValidationException::withMessages([
+                    'approval' => 'Laporan belum memiliki anggota DPRD tujuan sehingga tidak dapat didisposisikan.',
+                ])->errorBag('approval');
+            }
+
+            /*
+             * Staf diambil dari relasi akun aktif yang tersimpan, bukan dari
+             * input administrator. Bila tidak ada, laporan tetap di antrean
+             * dan tidak dipaksakan ke staf lain.
+             */
+            $staff = User::query()
+                ->where('role', User::ROLE_STAF_PENDAMPING)
+                ->where('is_active', true)
+                ->where('dprd_member_id', $report->dprd_member_id)
+                ->orderBy('id')
+                ->first();
+
+            if (! $staff) {
+                return ['report' => $report, 'staff' => null];
+            }
+
+            if ((int) $report->assigned_to !== (int) $staff->id) {
+                LaporanPenugasan::query()
+                    ->where('laporan_masyarakat_id', $report->id)
+                    ->whereNull('released_at')
+                    ->update([
+                        'released_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                LaporanPenugasan::query()->create([
+                    'laporan_masyarakat_id' => $report->id,
+                    'user_id' => $staff->id,
+                    'assigned_by' => $administrator->id,
+                    'assigned_at' => now(),
+                    'released_at' => null,
+                    'catatan' => $validated['catatan'] ?? 'Disposisi otomatis setelah persetujuan.',
+                ]);
+            }
+
+            $previousStatus = $report->status;
+
+            $report->assigned_to = $staff->id;
+            $report->assigned_at = $report->assigned_at ?: now();
+            $report->disetujui_oleh = $administrator->id;
+            $report->disetujui_at = now();
+            $report->status = LaporanMasyarakat::STATUS_DITUGASKAN;
+            $report->ditutup_at = null;
+
+            if (! empty($validated['catatan'])) {
+                $report->catatan_penyelesaian = $validated['catatan'];
+            }
+
+            $report->save();
+
+            AktivitasSistem::catat(
+                'laporan.disetujui',
+                $administrator,
+                $report,
+                [
+                    'nomor_tiket' => $report->nomor_tiket,
+                    'dprd_member_id' => $report->dprd_member_id,
+                    'assigned_to' => $staff->id,
+                    'previous_status' => $previousStatus,
+                ],
+                'Laporan '.$report->nomor_tiket.' disetujui dan didisposisikan kepada staf pendamping.'
+            );
+
+            return ['report' => $report, 'staff' => $staff];
+        });
+
+        if (! $result['staff']) {
+            return redirect()
+                ->to(SafeReturnUrl::reportsIndex($request->input('return_to'), $request))
+                ->with('warning', 'Anggota DPRD tujuan belum memiliki staf pendamping aktif. Laporan belum didisposisikan.');
+        }
+
+        return redirect()
+            ->to(SafeReturnUrl::reportsIndex($request->input('return_to'), $request))
+            ->with('success', 'Laporan disetujui dan didisposisikan kepada '.$result['staff']->name.'.');
+    }
+
     public function downloadAttachment(Request $request, LaporanMasyarakat $laporan): StreamedResponse
+    {
+        return $this->attachmentResponse($request, $laporan, inline: false);
+    }
+
+    /**
+     * Tampilkan lampiran privat di tab baru tanpa mengunduhnya. Berkas
+     * dikirim inline dengan header keamanan yang sama seperti unduhan.
+     */
+    public function viewAttachment(Request $request, LaporanMasyarakat $laporan): StreamedResponse
+    {
+        return $this->attachmentResponse($request, $laporan, inline: true);
+    }
+
+    private function attachmentResponse(Request $request, LaporanMasyarakat $laporan, bool $inline): StreamedResponse
     {
         $report = LaporanMasyarakat::query()
             ->visibleTo($request->user())
@@ -205,102 +423,77 @@ class ReportController extends Controller
         $disk = Storage::disk('local');
         abort_unless($disk->exists($path), 404, 'Berkas lampiran tidak ditemukan.');
 
-        return $disk->download($path, $this->safeDownloadName($report->lampiran_nama), [
+        $name = $this->safeDownloadName($report->lampiran_nama);
+
+        if ($inline) {
+            return $disk->response($path, $name, [
+                'Content-Type' => $report->lampiran_mime ?: 'application/octet-stream',
+                'Content-Disposition' => 'inline; filename="'.$name.'"',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        return $disk->download($path, $name, [
             'Content-Type' => $report->lampiran_mime ?: 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
-    public function updateAssignment(ReportAssignmentRequest $request, LaporanMasyarakat $laporan): RedirectResponse
+    /**
+     * Staf pendamping hanya dapat memperbarui status tindak lanjut laporan
+     * yang didisposisikan kepadanya. Persetujuan tetap milik administrator.
+     */
+    public function updateStatusForStaff(StaffReportStatusRequest $request, LaporanMasyarakat $laporan): RedirectResponse
     {
         $validated = $request->validated();
-        $administrator = $request->user();
+        $staff = $request->user();
 
-        DB::transaction(function () use ($validated, $administrator, $laporan): void {
+        DB::transaction(function () use ($validated, $staff, $laporan): void {
             $report = LaporanMasyarakat::query()
+                ->visibleTo($staff)
                 ->lockForUpdate()
                 ->findOrFail($laporan->id);
 
-            $memberId = $validated['dprd_member_id'] ?? null;
-            $staffId = $validated['assigned_to'] ?? null;
-            $note = $validated['catatan'] ?? null;
+            $newStatus = $validated['status'];
 
-            if ($staffId) {
-                $staff = User::query()
-                    ->whereKey($staffId)
-                    ->where('role', User::ROLE_STAF_PENDAMPING)
-                    ->where('is_active', true)
-                    ->first();
-
-                if (! $staff || (int) $staff->dprd_member_id !== (int) $memberId) {
-                    throw ValidationException::withMessages([
-                        'assigned_to' => 'Staf yang dipilih bukan pendamping aktif dari anggota DPRD tersebut.',
-                    ])->errorBag('assignment');
-                }
+            if (! in_array($newStatus, [
+                LaporanMasyarakat::STATUS_DIPROSES,
+                LaporanMasyarakat::STATUS_SELESAI,
+            ], true) || ! $report->canTransitionTo($newStatus)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Status tindak lanjut yang dipilih tidak diizinkan untuk staf pendamping.',
+                ])->errorBag('status');
             }
 
-            $previousStaffId = $report->assigned_to;
-            $previousMemberId = $report->dprd_member_id;
-            $staffChanged = (int) ($previousStaffId ?? 0) !== (int) ($staffId ?? 0);
+            $previousStatus = $report->status;
+            $report->status = $newStatus;
 
-            if ($staffChanged) {
-                LaporanPenugasan::query()
-                    ->where('laporan_masyarakat_id', $report->id)
-                    ->whereNull('released_at')
-                    ->update([
-                        'released_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+            if ($newStatus === LaporanMasyarakat::STATUS_SELESAI) {
+                $report->ditutup_at = now();
             }
 
-            if ($staffId && $staffChanged) {
-                LaporanPenugasan::query()->create([
-                    'laporan_masyarakat_id' => $report->id,
-                    'user_id' => $staffId,
-                    'assigned_by' => $administrator->id,
-                    'assigned_at' => now(),
-                    'released_at' => null,
-                    'catatan' => $note,
-                ]);
-            }
-
-            $report->dprd_member_id = $memberId;
-            $report->assigned_to = $staffId;
-            $report->assigned_at = $staffId
-                ? ($staffChanged || ! $report->assigned_at ? now() : $report->assigned_at)
-                : null;
-
-            if ($staffId) {
-                if (in_array($report->status, [
-                    LaporanMasyarakat::STATUS_BARU,
-                    LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-                ], true)) {
-                    $report->status = LaporanMasyarakat::STATUS_DITUGASKAN;
-                }
-            } elseif ($report->status === LaporanMasyarakat::STATUS_DITUGASKAN) {
-                $report->status = LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN;
+            if (! empty($validated['catatan'])) {
+                $report->catatan_penyelesaian = $validated['catatan'];
             }
 
             $report->save();
 
             AktivitasSistem::catat(
-                'laporan.penugasan',
-                $administrator,
+                'laporan.tindak_lanjut',
+                $staff,
                 $report,
                 [
                     'nomor_tiket' => $report->nomor_tiket,
-                    'dprd_member_id' => $memberId,
-                    'assigned_to' => $staffId,
-                    'previous_dprd_member_id' => $previousMemberId,
-                    'previous_assigned_to' => $previousStaffId,
+                    'previous_status' => $previousStatus,
+                    'status' => $newStatus,
                 ],
-                'Penugasan laporan '.$report->nomor_tiket.' diperbarui.'
+                'Tindak lanjut laporan '.$report->nomor_tiket.' diperbarui oleh staf pendamping.'
             );
         });
 
         return redirect()
             ->to(SafeReturnUrl::reportsIndex($request->input('return_to'), $request))
-            ->with('success', 'Penugasan laporan berhasil diperbarui.');
+            ->with('success', 'Tindak lanjut laporan berhasil diperbarui.');
     }
 
     public function updateStatus(ReportStatusRequest $request, LaporanMasyarakat $laporan): RedirectResponse
@@ -340,11 +533,19 @@ class ReportController extends Controller
 
             /*
              * Mengembalikan laporan ke antrean penugasan berarti staf yang
-             * sebelumnya ditugaskan dilepas. Riwayat penugasan tetap utuh.
+             * sebelumnya ditugaskan dilepas dan persetujuan dibatalkan.
+             * Riwayat penugasan tetap utuh.
              */
             if ($newStatus === LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN) {
                 $report->assigned_to = null;
                 $report->assigned_at = null;
+                $report->disetujui_oleh = null;
+                $report->disetujui_at = null;
+            }
+
+            if ($newStatus === LaporanMasyarakat::STATUS_DITOLAK) {
+                $report->disetujui_oleh = null;
+                $report->disetujui_at = null;
             }
 
             $report->save();
@@ -379,47 +580,6 @@ class ReportController extends Controller
         return redirect()
             ->to(SafeReturnUrl::reportsIndex($request->input('return_to'), $request))
             ->with('success', 'Status laporan berhasil diperbarui.');
-    }
-
-    /**
-     * Simpan keputusan final komisi Administrator. Hasil klasifikasi otomatis
-     * (kolom klasifikasi_*) tidak ditimpa agar tetap dapat diaudit.
-     */
-    public function updateCommission(ReportCommissionRequest $request, LaporanMasyarakat $laporan): RedirectResponse
-    {
-        $validated = $request->validated();
-        $administrator = $request->user();
-
-        DB::transaction(function () use ($validated, $administrator, $laporan): void {
-            $report = LaporanMasyarakat::query()
-                ->lockForUpdate()
-                ->findOrFail($laporan->id);
-
-            $previousCommissionId = $report->komisi_final_id;
-
-            $report->komisi_final_id = (int) $validated['komisi_final_id'];
-            $report->komisi_final_ditetapkan_oleh = $administrator->id;
-            $report->komisi_final_ditetapkan_at = now();
-            $report->save();
-
-            AktivitasSistem::catat(
-                'laporan.komisi',
-                $administrator,
-                $report,
-                [
-                    'nomor_tiket' => $report->nomor_tiket,
-                    'komisi_final_id' => $report->komisi_final_id,
-                    'previous_komisi_final_id' => $previousCommissionId,
-                    'klasifikasi_komisi_id' => $report->klasifikasi_komisi_id,
-                    'catatan' => $validated['catatan'] ?? null,
-                ],
-                'Komisi final laporan '.$report->nomor_tiket.' ditetapkan.'
-            );
-        });
-
-        return redirect()
-            ->to(SafeReturnUrl::reportsIndex($request->input('return_to'), $request))
-            ->with('success', 'Komisi final laporan berhasil disimpan.');
     }
 
     /**

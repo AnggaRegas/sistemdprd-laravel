@@ -9,6 +9,7 @@ use App\Models\Arsip;
 use App\Models\DprdMember;
 use App\Models\DprdRegion;
 use App\Models\DprdStaff;
+use App\Models\KategoriArsip;
 use App\Models\StaffAssignmentHistory;
 use App\Models\User;
 use App\Services\StaffAssignmentService;
@@ -165,6 +166,57 @@ class MemberController extends Controller
                 || $filters['partai'] !== ''
                 || $filters['kecamatan'] !== ''
                 || $filters['staff'] !== '',
+        ]);
+    }
+
+    /**
+     * Folder anggota DPRD: menampilkan dua submenu utama, yaitu Pokir
+     * (Pokok-Pokok Pikiran) dan Hasil Reses. Keduanya tetap memakai
+     * hierarki arsip anggota yang sudah ada, bukan tabel baru.
+     */
+    public function show(Request $request, DprdMember $member): View
+    {
+        $this->authorize('view', $member);
+
+        $member->loadMissing('staff');
+        $member->loadCount(['arsips', 'laporan']);
+
+        $categories = KategoriArsip::query()
+            ->where(function ($query) use ($member) {
+                $query->where('is_active', true)
+                    ->orWhereHas('archiveYears', function ($yearQuery) use ($member) {
+                        $yearQuery->where('dprd_member_id', $member->id);
+                    });
+            })
+            ->withCount([
+                'archiveYears as years_count' => function ($query) use ($member) {
+                    $query->where('dprd_member_id', $member->id);
+                },
+                'arsips as documents_count' => function ($query) use ($member) {
+                    $query->where('dprd_member_id', $member->id)
+                        ->whereNotNull('archive_folder_id');
+                },
+            ])
+            ->orderBy('nama')
+            ->get();
+
+        $pokir = $categories->first(function (KategoriArsip $category) {
+            return Str::upper((string) $category->kode) === 'POKIR'
+                || Str::contains(Str::upper((string) $category->nama), 'POKOK-POKOK');
+        });
+
+        $reses = $categories->first(function (KategoriArsip $category) {
+            return Str::upper((string) $category->kode) === 'RESES'
+                || Str::contains(Str::upper((string) $category->nama), 'HASIL RESES');
+        });
+
+        return view('members.show', [
+            'member' => $member,
+            'categories' => $categories,
+            'pokir' => $pokir,
+            'reses' => $reses,
+            'totalDocuments' => (int) $categories->sum('documents_count'),
+            'totalYears' => (int) $categories->sum('years_count'),
         ]);
     }
 

@@ -59,9 +59,18 @@ class PublicAspirationRequest extends FormRequest
                 Rule::exists('dprd_members', 'id')
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
-                    ->where('dprd_region_id', $regionId),
+                    ->where(function ($query) use ($regionId) {
+                        $query->where('dprd_region_id', $regionId)
+                            ->orWhereIn(
+                                'dprd_members.id',
+                                \Illuminate\Support\Facades\DB::table('dprd_member_regions')
+                                    ->select('dprd_member_id')
+                                    ->where('dprd_region_id', $regionId)
+                            );
+                    }),
             ],
-            'isi' => ['required', 'string', 'min:20', 'max:5000'],
+            'pelapor_alamat' => ['required', 'string', 'max:1000'],
+            'isi' => ['required', 'string'],
             'lampiran' => [
                 'nullable',
                 'file',
@@ -90,9 +99,9 @@ class PublicAspirationRequest extends FormRequest
             'dprd_member_id.required' => 'Anggota DPRD wajib dipilih.',
             'dprd_member_id.integer' => 'Anggota DPRD yang dipilih tidak valid.',
             'dprd_member_id.exists' => 'Anggota yang dipilih tidak aktif atau tidak terhubung dengan kecamatan/dapil tersebut.',
+            'pelapor_alamat.required' => 'Alamat lengkap wajib diisi.',
+            'pelapor_alamat.max' => 'Alamat lengkap maksimal 1.000 karakter.',
             'isi.required' => 'Isi aspirasi wajib diisi.',
-            'isi.min' => 'Isi aspirasi minimal 20 karakter agar dapat dipahami petugas.',
-            'isi.max' => 'Isi aspirasi maksimal 5.000 karakter.',
             'lampiran.file' => 'Lampiran harus berupa berkas yang valid.',
             'lampiran.max' => 'Ukuran lampiran maksimal 5 MB.',
             'lampiran.mimes' => 'Jenis lampiran harus PDF, JPG, JPEG, PNG, WEBP, DOC, atau DOCX.',
@@ -110,6 +119,7 @@ class PublicAspirationRequest extends FormRequest
             'pelapor_kontak' => 'nomor telepon atau email',
             'dprd_region_id' => 'kecamatan atau dapil',
             'dprd_member_id' => 'anggota DPRD',
+            'pelapor_alamat' => 'alamat lengkap',
             'isi' => 'isi aspirasi',
             'lampiran' => 'lampiran',
             'persetujuan' => 'persetujuan pemrosesan data',
@@ -121,7 +131,28 @@ class PublicAspirationRequest extends FormRequest
         $this->merge([
             'pelapor_nama' => trim((string) $this->input('pelapor_nama')),
             'pelapor_kontak' => trim((string) $this->input('pelapor_kontak')),
+            'pelapor_alamat' => trim((string) $this->input('pelapor_alamat')),
             'isi' => trim((string) $this->input('isi')),
         ]);
+    }
+
+    public function withValidator($validator): void
+    {
+        /*
+         * PHP membatalkan unggahan sebelum Laravel menerima berkas ketika
+         * ukurannya melewati upload_max_filesize server. Validasi file biasa
+         * tidak dapat menjelaskannya, jadi kegagalan ini dipetakan ke pesan
+         * yang jelas.
+         */
+        $validator->after(function ($validator): void {
+            $upload = $_FILES['lampiran'] ?? null;
+
+            if (is_array($upload) && ($upload['error'] ?? UPLOAD_ERR_OK) === UPLOAD_ERR_INI_SIZE) {
+                $validator->errors()->add(
+                    'lampiran',
+                    'Ukuran lampiran melebihi batas server. Perkecil ukuran berkas lalu unggah kembali.'
+                );
+            }
+        });
     }
 }

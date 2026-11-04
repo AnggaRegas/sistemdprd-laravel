@@ -247,6 +247,9 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
         Route::get('/arsip/{archive}/unduh', [ArchiveController::class, 'download'])->name('arsip.download');
 
         Route::get('/anggota', [MemberController::class, 'index'])->name('anggota.index');
+        Route::get('/anggota/{member}', [MemberController::class, 'show'])
+            ->whereNumber('member')
+            ->name('anggota.show');
 
         /*
         |----------------------------------------------------------------------
@@ -343,17 +346,23 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
         Route::get('/laporan/{laporan}/lampiran', [ReportController::class, 'downloadAttachment'])
             ->whereNumber('laporan')
             ->name('laporan.lampiran');
+        Route::get('/laporan/{laporan}/lampiran/lihat', [ReportController::class, 'viewAttachment'])
+            ->whereNumber('laporan')
+            ->name('laporan.lampiran.lihat');
 
         Route::middleware('role:administrator')->group(function () {
-            Route::patch('/laporan/{laporan}/penugasan', [ReportController::class, 'updateAssignment'])
+            Route::patch('/laporan/{laporan}/persetujuan', [ReportController::class, 'approve'])
                 ->whereNumber('laporan')
-                ->name('laporan.penugasan.update');
+                ->name('laporan.persetujuan');
             Route::patch('/laporan/{laporan}/status', [ReportController::class, 'updateStatus'])
                 ->whereNumber('laporan')
                 ->name('laporan.status.update');
-            Route::patch('/laporan/{laporan}/komisi', [ReportController::class, 'updateCommission'])
+        });
+
+        Route::middleware('role:staf_pendamping')->group(function () {
+            Route::patch('/laporan/{laporan}/tindak-lanjut', [ReportController::class, 'updateStatusForStaff'])
                 ->whereNumber('laporan')
-                ->name('laporan.komisi.update');
+                ->name('laporan.tindak-lanjut.update');
         });
 
         Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

@@ -644,7 +644,7 @@
                     <div class="hidden items-center gap-8 lg:flex">
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#beranda">Beranda</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#layanan">Layanan</a>
-                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#informasi">Informasi</a>
+                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#berita">Informasi</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#alur">Alur Pengajuan</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#faq">FAQ</a>
                         <a class="nav-link text-[13px] font-extrabold text-[#a17f3e] hover:text-[#0e3b31]" href="{{ route('aspirasi.create') }}">Aspirasi</a>
@@ -714,7 +714,7 @@
                     <div class="flex flex-col">
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#beranda">Beranda</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#layanan">Layanan</a>
-                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#informasi">Informasi</a>
+                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#berita">Informasi</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#alur">Alur Pengajuan</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#faq">FAQ</a>
                         <a @click="menuOpen = false" class="rounded-xl bg-[#f6ecd7] px-4 py-3 text-sm font-extrabold text-[#7a5e28] transition hover:bg-[#f0e1c0]" href="{{ route('aspirasi.create') }}">Sampaikan Aspirasi</a>
@@ -747,7 +747,6 @@
     <main id="konten">
         @php
             $latestNews = $latestNews ?? collect();
-            $upcomingAgendas = $upcomingAgendas ?? collect();
             $galleryPhotos = $galleryPhotos ?? collect();
         @endphp
 
@@ -801,7 +800,7 @@
                             </svg>
                         </a>
 
-                        <a href="#informasi"
+                        <a href="#berita"
                            class="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/[0.04] px-6 py-3.5 text-sm font-bold text-white transition hover:border-white/35 hover:bg-white/10">
                             Jelajahi Informasi
                         </a>
@@ -887,7 +886,7 @@
                         </a>
 
                         <!-- KARTU 3 -->
-                        <a href="#agenda" class="topic-card group flex items-center gap-4 rounded-2xl bg-[#fbf8f0] p-4 shadow-[0_20px_45px_-26px_rgba(0,0,0,.7)] ring-1 ring-black/[0.04] hover:bg-white sm:gap-5 sm:p-5">
+                        <a href="{{ route('agenda.index') }}" class="topic-card group flex items-center gap-4 rounded-2xl bg-[#fbf8f0] p-4 shadow-[0_20px_45px_-26px_rgba(0,0,0,.7)] ring-1 ring-black/[0.04] hover:bg-white sm:gap-5 sm:p-5">
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0e3b31]/[0.07] text-[#0e3b31] transition group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d] sm:h-12 sm:w-12">
                                 <svg class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <rect x="3" y="5" width="18" height="16" rx="2"/>
@@ -1047,7 +1046,7 @@
                         Temukan kabar kegiatan, agenda, pengumuman, dan informasi resmi seputar DPRD.
                     </p>
 
-                    <a href="#informasi" class="mt-auto inline-flex items-center gap-2 pt-8 text-[13px] font-extrabold text-[#0e3b31] transition hover:gap-3 hover:text-[#a17f3e]">
+                    <a href="#berita" class="mt-auto inline-flex items-center gap-2 pt-8 text-[13px] font-extrabold text-[#0e3b31] transition hover:gap-3 hover:text-[#a17f3e]">
                         Lihat informasi
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                             <path d="M5 12h14m-6-6 6 6-6 6"/>
@@ -1165,103 +1164,6 @@
                     @endforeach
                 </div>
             @endif
-        </section>
-
-        <!-- AGENDA KEGIATAN -->
-        <section id="agenda" class="border-y border-[#e7dfd0] bg-[#f1ecdf]">
-            <div class="container-public scroll-mt-28 py-24 lg:py-28">
-                <div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between sm:gap-12">
-                    <x-public.section-header
-                        eyebrow="Agenda Kegiatan"
-                        title="Jadwal kegiatan mendatang"
-                        description="Ikuti agenda resmi DPRD Kota Parepare yang telah dipublikasikan."
-                    />
-
-                    <div class="flex shrink-0 flex-wrap items-center gap-2.5">
-                        <a href="{{ route('agenda.arsip') }}"
-                           class="inline-flex items-center gap-2 rounded-xl border border-[#0e3b31]/15 bg-white px-5 py-3 text-[13px] font-extrabold text-[#0e3b31] transition hover:-translate-y-0.5 hover:border-[#0e3b31]">
-                            Arsip Agenda
-                        </a>
-                        <a href="{{ route('agenda.index') }}"
-                           class="inline-flex items-center gap-2 rounded-xl bg-[#0e3b31] px-5 py-3 text-[13px] font-extrabold text-[#e6c47d] transition hover:-translate-y-0.5 hover:bg-[#082a23]">
-                            Lihat Semua Agenda
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                                <path d="M5 12h14m-6-6 6 6-6 6"/>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-
-                @if ($upcomingAgendas->isEmpty())
-                    <div class="mt-12 rounded-3xl border border-dashed border-[#d8c99f] bg-white/70 px-6 py-14 text-center">
-                        <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0e3b31]/5 text-[#0e3b31]">
-                            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                                <rect x="3" y="5" width="18" height="16" rx="2"/>
-                                <path d="M8 3v4M16 3v4M3 10h18M8 14h2M14 14h2M8 18h2"/>
-                            </svg>
-                        </span>
-                        <h3 class="mt-5 text-lg font-extrabold text-[#123b32]">Belum ada agenda mendatang</h3>
-                        <p class="mx-auto mt-2 max-w-md text-[13px] leading-6 text-[#6b7873]">
-                            Agenda yang dipublikasikan akan muncul di sini secara otomatis.
-                        </p>
-                    </div>
-                @else
-                    <div class="mt-12 cards-grid-2">
-                        @foreach ($upcomingAgendas as $agenda)
-                            @php
-                                $agendaClasses = match ($agenda->event_status) {
-                                    \App\Models\LandingAgenda::EVENT_ONGOING => 'bg-amber-50 text-amber-700 border-amber-200',
-                                    \App\Models\LandingAgenda::EVENT_COMPLETED => 'bg-slate-100 text-slate-600 border-slate-200',
-                                    \App\Models\LandingAgenda::EVENT_CANCELLED => 'bg-rose-50 text-rose-700 border-rose-200',
-                                    default => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                };
-                            @endphp
-
-                            <article class="info-card flex h-full gap-4 rounded-2xl border border-[#e2d9c5] bg-white p-5 sm:gap-5 sm:p-6">
-                                <div class="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-[#0e3b31] text-white">
-                                    <span class="text-xl font-extrabold leading-none">{{ $agenda->event_date?->format('d') }}</span>
-                                    <span class="mt-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#e6c47d]">
-                                        {{ $agenda->event_date?->translatedFormat('M') }}
-                                    </span>
-                                </div>
-
-                                <div class="flex min-w-0 flex-1 flex-col">
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="rounded-full border px-2.5 py-1 text-[10px] font-bold {{ $agendaClasses }}">
-                                            {{ $agenda->event_status_label }}
-                                        </span>
-                                        <span class="text-[11px] font-semibold text-[#98a29d]">
-                                            {{ substr((string) $agenda->start_time, 0, 5) }} WITA
-                                        </span>
-                                    </div>
-
-                                    <h3 class="mt-2 min-h-[3rem] text-[15px] font-extrabold leading-6 text-[#123b32]">
-                                        <a href="{{ route('agenda.show', $agenda->slug) }}" class="line-clamp-2 transition hover:text-[#a17f3e]">
-                                            {{ $agenda->title }}
-                                        </a>
-                                    </h3>
-
-                                    <p class="mt-1 flex items-center gap-1.5 text-[12px] text-[#6b7873]">
-                                        <svg class="h-3.5 w-3.5 shrink-0 text-[#a17f3e]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                            <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/>
-                                            <circle cx="12" cy="10" r="2.5"/>
-                                        </svg>
-                                        <span class="truncate">{{ $agenda->location }}</span>
-                                    </p>
-
-                                    <a href="{{ route('agenda.show', $agenda->slug) }}"
-                                       class="mt-auto inline-flex items-center gap-1.5 pt-3 text-[11.5px] font-extrabold text-[#0e3b31] transition hover:gap-2.5 hover:text-[#a17f3e]">
-                                        Detail Agenda
-                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                                            <path d="M5 12h14m-6-6 6 6-6 6"/>
-                                        </svg>
-                                    </a>
-                                </div>
-                            </article>
-                        @endforeach
-                    </div>
-                @endif
-            </div>
         </section>
 
         <!-- GALERI DOKUMENTASI -->
@@ -1667,7 +1569,7 @@
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
                         <a href="#beranda" class="transition hover:text-[#e6c47d]">Beranda</a>
                         <a href="#layanan" class="transition hover:text-[#e6c47d]">Layanan</a>
-                        <a href="#informasi" class="transition hover:text-[#e6c47d]">Informasi</a>
+                        <a href="#berita" class="transition hover:text-[#e6c47d]">Informasi</a>
                         <a href="#alur" class="transition hover:text-[#e6c47d]">Alur Pengajuan</a>
                         <a href="#faq" class="transition hover:text-[#e6c47d]">Pertanyaan Umum</a>
                     </div>

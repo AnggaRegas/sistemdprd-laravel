@@ -254,7 +254,10 @@ class LandingPageManagementTest extends TestCase
 
         $this->get(route('agenda.index'))->assertOk()->assertSee($upcoming->title);
         $this->get(route('agenda.show', $upcoming->slug))->assertOk()->assertSee($upcoming->title);
-        $this->get('/')->assertOk()->assertSee($upcoming->title);
+
+        // Beranda tidak lagi menampilkan section agenda; daftar lengkap ada di
+        // halaman agenda publik.
+        $this->get('/')->assertOk()->assertDontSee($upcoming->title);
 
         // Agenda lampau tetap tersedia di arsip, bukan di daftar mendatang.
         $past = LandingAgenda::query()->create([

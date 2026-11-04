@@ -2,12 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\DprdCommission;
 use App\Models\DprdMember;
 use App\Models\DprdRegion;
 use App\Models\LaporanMasyarakat;
-use App\Services\AspirationClassifier;
-use Database\Seeders\KomisiSeeder;
+use App\Models\LaporanSimilarityResult;
+use Database\Seeders\MemberSeeder;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,6 +45,7 @@ class PublicAspirationTest extends TestCase
         return array_merge([
             'pelapor_nama' => 'Andi Saputra',
             'pelapor_kontak' => '081234567890',
+            'pelapor_alamat' => 'Jalan Lagaligo No. 12, Kelurahan Ujung Bulu',
             'dprd_region_id' => $member->dprd_region_id,
             'dprd_member_id' => $member->id,
             'isi' => 'Lampu jalan di depan pasar mati sejak seminggu terakhir sehingga jalan menjadi gelap pada malam hari.',
@@ -74,12 +74,14 @@ class PublicAspirationTest extends TestCase
             ->assertSee('Kecamatan Soreang')
             ->assertSee('Nama Lengkap')
             ->assertSee('Nomor Telepon atau Email')
+            ->assertSee('Alamat Lengkap')
             ->assertSee('Anggota DPRD')
             ->assertSee('Isi Aspirasi')
             ->assertSee('Lampiran')
             ->assertSee('Pilih kecamatan/dapil terlebih dahulu')
             ->assertDontSee('Judul Aspirasi')
-            ->assertDontSee('Kategori Aspirasi');
+            ->assertDontSee('Kategori Aspirasi')
+            ->assertDontSee('Rekomendasi komisi');
     }
 
     public function test_public_form_rejects_invalid_input(): void
@@ -90,6 +92,7 @@ class PublicAspirationTest extends TestCase
             ->assertSessionHasErrors([
                 'pelapor_nama',
                 'pelapor_kontak',
+                'pelapor_alamat',
                 'dprd_region_id',
                 'dprd_member_id',
                 'isi',
@@ -119,6 +122,13 @@ class PublicAspirationTest extends TestCase
             ->assertRedirect(route('aspirasi.create'))
             ->assertSessionHasErrors('lampiran');
 
+        $this->from(route('aspirasi.create'))
+            ->post(route('aspirasi.store'), $this->payload($member, [
+                'lampiran' => UploadedFile::fake()->create('bukti.pdf', 5200, 'application/pdf'),
+            ]))
+            ->assertRedirect(route('aspirasi.create'))
+            ->assertSessionHasErrors('lampiran');
+
         $this->assertDatabaseCount('laporan_masyarakat', 0);
     }
 
@@ -136,6 +146,24 @@ class PublicAspirationTest extends TestCase
             ->assertSessionHasErrors('dprd_member_id');
 
         $this->assertDatabaseCount('laporan_masyarakat', 0);
+    }
+
+    public function test_public_form_accepts_member_linked_through_region_pivot(): void
+    {
+        $region = $this->region('Kecamatan Ujung');
+        $member = DprdMember::factory()->create([
+            'dprd_region_id' => null,
+            'is_active' => true,
+        ]);
+        $member->regions()->attach($region->id);
+
+        $this->post(route('aspirasi.store'), $this->payload($member, [
+            'dprd_region_id' => $region->id,
+        ]))->assertRedirect(route('aspirasi.success'));
+
+        $report = LaporanMasyarakat::query()->firstOrFail();
+
+        $this->assertSame($member->id, $report->dprd_member_id);
     }
 
     public function test_public_form_rejects_inactive_member_or_region(): void
@@ -162,7 +190,6 @@ class PublicAspirationTest extends TestCase
     public function test_public_submission_stores_report_with_initial_queue_status(): void
     {
         Storage::fake('local');
-        $this->seed(KomisiSeeder::class);
 
         $region = $this->region('Kecamatan Ujung');
         $member = $this->member($region, ['nama_lengkap' => 'Anggota Ujung Uji']);
@@ -174,7 +201,6 @@ class PublicAspirationTest extends TestCase
         $response->assertRedirect(route('aspirasi.success'));
 
         $report = LaporanMasyarakat::query()->firstOrFail();
-        $commission2 = DprdCommission::query()->where('slug', 'komisi-2')->firstOrFail();
 
         $this->assertMatchesRegularExpression(
             '/^ASP-\d{8}-[A-Z0-9]{6}$/',
@@ -182,6 +208,10 @@ class PublicAspirationTest extends TestCase
         );
         $this->assertSame('Andi Saputra', $report->pelapor_nama);
         $this->assertSame('081234567890', $report->pelapor_kontak);
+        $this->assertSame(
+            'Jalan Lagaligo No. 12, Kelurahan Ujung Bulu',
+            $report->pelapor_alamat
+        );
         $this->assertSame(
             'Lampu jalan di depan pasar mati sejak seminggu terakhir sehingga jalan menjadi gelap pada malam hari.',
             $report->ringkasan
@@ -192,21 +222,11 @@ class PublicAspirationTest extends TestCase
         $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
         $this->assertNull($report->assigned_to);
         $this->assertNull($report->assigned_at);
+        $this->assertNull($report->disetujui_oleh);
+        $this->assertNull($report->disetujui_at);
         $this->assertNull($report->ditutup_at);
+        $this->assertNull($report->klasifikasi_komisi_id);
         $this->assertSame(now()->toDateString(), $report->tanggal_laporan?->toDateString());
-
-        $this->assertSame($commission2->id, $report->klasifikasi_komisi_id);
-        $this->assertSame(
-            LaporanMasyarakat::KLASIFIKASI_DIREKOMENDASIKAN,
-            $report->klasifikasi_status
-        );
-        $this->assertSame('rule_based_weighted_keywords_v1', $report->klasifikasi_metode);
-        $this->assertNotNull($report->klasifikasi_dianalisis_at);
-        $this->assertGreaterThanOrEqual(4, (float) $report->klasifikasi_skor);
-        $this->assertNotEmpty($report->klasifikasi_keywords);
-        $this->assertNotEmpty($report->klasifikasi_alasan);
-        $this->assertIsArray($report->klasifikasi_skor_detail);
-        $this->assertNull($report->komisi_final_id);
 
         $this->assertNotNull($report->lampiran_path);
         $this->assertStringStartsWith('laporan-masyarakat/', $report->lampiran_path);
@@ -221,28 +241,54 @@ class PublicAspirationTest extends TestCase
             'subject_id' => $report->id,
         ]);
 
-        $response->assertSessionHas('aspiration_ticket', $report->nomor_tiket);
+        $response->assertSessionHas('aspiration_submitted', true)
+            ->assertSessionMissing('aspiration_ticket');
 
-        $this->withSession(['aspiration_ticket' => $report->nomor_tiket])
+        $this->withSession(['aspiration_submitted' => true])
             ->get(route('aspirasi.success'))
             ->assertOk()
-            ->assertSee($report->nomor_tiket)
-            ->assertSee('Aspirasi Berhasil Dikirim');
+            ->assertSee('Aspirasi Berhasil Dikirim!')
+            ->assertDontSee($report->nomor_tiket);
+    }
+
+    public function test_public_submission_accepts_short_and_long_content_without_limits(): void
+    {
+        $member = $this->member();
+
+        $this->post(route('aspirasi.store'), $this->payload($member, [
+            'isi' => 'tolong',
+        ]))->assertRedirect(route('aspirasi.success'));
+
+        $this->post(route('aspirasi.store'), $this->payload($member, [
+            'isi' => $this->longAspiration(),
+        ]))->assertRedirect(route('aspirasi.success'));
+
+        $this->assertSame(2, LaporanMasyarakat::query()->count());
+
+        $this->assertSame(
+            $this->longAspiration(),
+            LaporanMasyarakat::query()->orderByDesc('id')->firstOrFail()->isi
+        );
+    }
+
+    private function longAspiration(): string
+    {
+        return rtrim(str_repeat(
+            'Aspirasi perbaikan jalan lingkungan yang panjang ini menggambarkan kebutuhan detail warga. ',
+            120
+        ));
     }
 
     public function test_public_submission_ignores_internal_fields_sent_by_client(): void
     {
-        $this->seed(KomisiSeeder::class);
-
         $member = $this->member();
 
         $this->post(route('aspirasi.store'), $this->payload($member, [
             'status' => LaporanMasyarakat::STATUS_SELESAI,
             'assigned_to' => 999,
             'ditutup_at' => now()->toDateTimeString(),
-            'klasifikasi_komisi_id' => 999,
-            'klasifikasi_status' => LaporanMasyarakat::KLASIFIKASI_PERLU_DITINJAU,
-            'komisi_final_id' => 999,
+            'disetujui_oleh' => 999,
+            'disetujui_at' => now()->toDateTimeString(),
         ]))->assertRedirect(route('aspirasi.success'));
 
         $report = LaporanMasyarakat::query()->firstOrFail();
@@ -250,29 +296,9 @@ class PublicAspirationTest extends TestCase
         $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
         $this->assertNull($report->assigned_to);
         $this->assertNull($report->ditutup_at);
+        $this->assertNull($report->disetujui_oleh);
+        $this->assertNull($report->disetujui_at);
         $this->assertSame($member->id, $report->dprd_member_id);
-        $this->assertNull($report->komisi_final_id);
-        $this->assertSame(
-            DprdCommission::query()->where('slug', 'komisi-2')->value('id'),
-            $report->klasifikasi_komisi_id
-        );
-    }
-
-    public function test_public_submission_with_low_score_is_saved_as_needing_review(): void
-    {
-        $this->seed(KomisiSeeder::class);
-
-        $member = $this->member();
-
-        $this->post(route('aspirasi.store'), $this->payload($member, [
-            'isi' => 'Kami memohon perhatian pemerintah kota terhadap kebutuhan warga di lingkungan kami.',
-        ]))->assertRedirect(route('aspirasi.success'));
-
-        $report = LaporanMasyarakat::query()->firstOrFail();
-
-        $this->assertSame(LaporanMasyarakat::KLASIFIKASI_PERLU_DITINJAU, $report->klasifikasi_status);
-        $this->assertNull($report->klasifikasi_komisi_id);
-        $this->assertNotNull($report->klasifikasi_alasan);
     }
 
     public function test_public_submission_creates_unique_ticket_numbers(): void
@@ -293,20 +319,23 @@ class PublicAspirationTest extends TestCase
         $this->assertCount(2, $tickets->unique());
     }
 
-    public function test_success_page_only_displays_ticket_from_session(): void
+    public function test_success_page_requires_a_recent_submission_and_never_displays_internal_ticket(): void
     {
         $this->get(route('aspirasi.success'))
             ->assertRedirect(route('welcome'));
 
         $report = LaporanMasyarakat::factory()->create();
 
-        $this->withSession(['aspiration_ticket' => $report->nomor_tiket])
+        $this->withSession(['aspiration_submitted' => true])
             ->get(route('aspirasi.success'))
             ->assertOk()
-            ->assertSee($report->nomor_tiket);
+            ->assertSee('Aspirasi Berhasil Dikirim!')
+            ->assertSee('Kembali ke Portal Publik')
+            ->assertDontSee($report->nomor_tiket);
 
-        $this->withSession(['aspiration_ticket' => 'ASP-TIDAK-ADA'])
-            ->get(route('aspirasi.success'))
+        // Penanda konfirmasi hanya berlaku sekali agar halaman ini tidak dapat
+        // dipakai untuk menampilkan ulang informasi internal.
+        $this->get(route('aspirasi.success'))
             ->assertRedirect(route('welcome'));
     }
 
@@ -339,6 +368,22 @@ class PublicAspirationTest extends TestCase
             ->assertJsonPath('message', null);
     }
 
+    public function test_member_options_include_pivot_linked_members(): void
+    {
+        $regionA = $this->region('Kecamatan Ujung');
+        $pivotMember = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Pivot Ujung',
+            'dprd_region_id' => null,
+            'is_active' => true,
+        ]);
+        $pivotMember->regions()->attach($regionA->id);
+
+        $this->getJson(route('aspirasi.members', ['dprd_region_id' => $regionA->id]))
+            ->assertOk()
+            ->assertJsonCount(1, 'members')
+            ->assertJsonPath('members.0.name', 'Anggota Pivot Ujung');
+    }
+
     public function test_member_options_explain_when_region_has_no_members(): void
     {
         $region = $this->region('Kecamatan Bacukiki Barat');
@@ -367,82 +412,58 @@ class PublicAspirationTest extends TestCase
             ->assertJsonValidationErrors('dprd_region_id');
     }
 
-    public function test_analysis_endpoint_recommends_commission_from_weighted_keywords(): void
+    public function test_classification_endpoint_is_retired(): void
     {
-        $this->seed(KomisiSeeder::class);
-
-        $response = $this->postJson(route('aspirasi.analyze'), [
+        $this->postJson(route('aspirasi.analyze'), [
             'isi' => 'Lampu jalan di depan pasar mati sejak seminggu terakhir sehingga jalan menjadi gelap pada malam hari.',
-        ]);
-
-        $response->assertOk()
-            ->assertJsonPath('status', LaporanMasyarakat::KLASIFIKASI_DIREKOMENDASIKAN)
-            ->assertJsonPath('status_label', 'Direkomendasikan')
-            ->assertJsonPath('komisi_nama', 'Komisi 2')
-            ->assertJsonPath('metode', 'rule_based_weighted_keywords_v1');
-
-        $keywords = $response->json('keywords');
-
-        $this->assertIsArray($keywords);
-        $this->assertContains('jalan', $keywords);
-        $this->assertGreaterThanOrEqual(4, (float) $response->json('skor'));
+        ])->assertStatus(410);
     }
 
-    public function test_analysis_endpoint_marks_ambiguous_text_as_needing_review(): void
+    public function test_similarity_results_are_computed_and_stored_for_same_member(): void
     {
-        $this->seed(KomisiSeeder::class);
+        config()->set('aspiration_similarity.threshold', 0.80);
 
-        $this->postJson(route('aspirasi.analyze'), [
-            'isi' => 'Jalan menuju sekolah rusak dan perlu diperbaiki.',
-        ])
-            ->assertOk()
-            ->assertJsonPath('status', LaporanMasyarakat::KLASIFIKASI_PERLU_DITINJAU)
-            ->assertJsonPath('status_label', 'Perlu Ditinjau')
-            ->assertJsonPath('komisi_id', null);
+        $region = $this->region('Kecamatan Ujung');
+        $member = $this->member($region);
 
-        $this->postJson(route('aspirasi.analyze'), [
-            'isi' => 'Kami memohon perhatian pemerintah kota terhadap kebutuhan warga.',
-        ])
-            ->assertOk()
-            ->assertJsonPath('status', LaporanMasyarakat::KLASIFIKASI_PERLU_DITINJAU)
-            ->assertJsonPath('komisi_id', null);
+        $this->post(route('aspirasi.store'), $this->payload($member, [
+            'isi' => 'Jalan Polobulu blok berlubang sejak bulan lalu sudah mengganggu lalu lintas warga yang sering melintasi perumahan ini.',
+        ]))->assertRedirect(route('aspirasi.success'));
+
+        $this->post(route('aspirasi.store'), $this->payload($member, [
+            'pelapor_nama' => 'Aminah Rahman',
+            'isi' => 'Jalan Polobulu blok berlubang sejak bulan lalu sudah mengganggu lalu lintas warga yang sering melintasi perumahan ini.',
+        ]))->assertRedirect(route('aspirasi.success'));
+
+        $latest = LaporanMasyarakat::query()->orderByDesc('id')->firstOrFail();
+
+        $this->assertDatabaseCount('laporan_similarity_results', 1);
+
+        $result = LaporanSimilarityResult::query()->firstOrFail();
+
+        $this->assertSame($latest->id, (int) $result->laporan_masyarakat_id);
+        $this->assertGreaterThanOrEqual(0.80, (float) $result->similarity_score);
     }
 
-    public function test_analysis_endpoint_validates_text_length(): void
+    public function test_similarity_results_stay_private_to_other_members(): void
     {
-        $this->postJson(route('aspirasi.analyze'), ['isi' => 'Terlalu pendek'])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('isi');
+        $region = $this->region('Kecamatan Ujung');
 
-        $this->postJson(route('aspirasi.analyze'), [])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('isi');
-    }
+        $this->post(route('aspirasi.store'), $this->payload(
+            $this->member($region, ['nama_lengkap' => 'Anggota Ujung A']),
+            [
+                'isi' => 'Jalan berlubang di Siring Siwa membutuhkan penanganan segera karena transportasi warga terganggu.',
+            ]
+        ))->assertRedirect(route('aspirasi.success'));
 
-    public function test_classifier_never_overwrites_administrator_final_commission(): void
-    {
-        $this->seed(KomisiSeeder::class);
+        $this->post(route('aspirasi.store'), $this->payload(
+            $this->member($region, ['nama_lengkap' => 'Anggota Ujung B']),
+            [
+                'isi' => 'Jalan berlubang di Siring Siwa membutuhkan penanganan segera karena transportasi warga terganggu.',
+            ]
+        ))->assertRedirect(route('aspirasi.success'));
 
-        $commissions = DprdCommission::query()->orderBy('id')->get();
-        $finalCommission = $commissions->last();
-
-        $report = LaporanMasyarakat::factory()->create([
-            'komisi_final_id' => $finalCommission->id,
-            'komisi_final_ditetapkan_at' => now(),
-        ]);
-
-        $classifier = app(AspirationClassifier::class);
-        $classifier->apply($report, $classifier->analyze(
-            'Lampu jalan di depan pasar mati sehingga jalan menjadi gelap pada malam hari.'
-        ));
-        $report->save();
-        $report->refresh();
-
-        $this->assertSame($finalCommission->id, $report->komisi_final_id);
-        $this->assertSame(
-            DprdCommission::query()->where('slug', 'komisi-2')->value('id'),
-            $report->klasifikasi_komisi_id
-        );
+        $this->assertDatabaseCount('laporan_similarity_results', 0);
     }
 
     public function test_failed_attachment_storage_never_shows_success_page(): void
@@ -469,6 +490,7 @@ class PublicAspirationTest extends TestCase
             ->assertRedirect(route('aspirasi.create'))
             ->assertSessionHas('error')
             ->assertSessionHasInput('pelapor_nama', 'Andi Saputra')
+            ->assertSessionMissing('aspiration_submitted')
             ->assertSessionMissing('aspiration_ticket');
 
         $this->assertDatabaseCount('laporan_masyarakat', 0);
@@ -490,13 +512,18 @@ class PublicAspirationTest extends TestCase
             ]))
             ->assertRedirect(route('aspirasi.create'))
             ->assertSessionHas('error')
-            ->assertSessionHasInput(
-                'isi',
-                'Lampu jalan di depan pasar mati sejak seminggu terakhir sehingga jalan menjadi gelap pada malam hari.'
-            )
+            ->assertSessionHasInput('pelapor_alamat', 'Jalan Lagaligo No. 12, Kelurahan Ujung Bulu')
+            ->assertSessionMissing('aspiration_submitted')
             ->assertSessionMissing('aspiration_ticket');
 
         $this->assertDatabaseCount('laporan_masyarakat', 0);
         $this->assertSame([], Storage::disk('local')->allFiles('laporan-masyarakat'));
+    }
+
+    public function test_member_seeder_stays_source_of_truth(): void
+    {
+        $this->seed(MemberSeeder::class);
+
+        $this->assertSame(25, DprdMember::query()->count());
     }
 }

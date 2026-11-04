@@ -22,6 +22,7 @@ class SafeReturnUrl
         'tanggal_dari',
         'tanggal_sampai',
         'page',
+        'anggota',
     ];
 
     public static function reportsIndex(?string $candidate, Request $request): string

@@ -140,7 +140,8 @@ class PortalAccessTest extends TestCase
         $this->actingAs($admin)->get('/arsip')->assertOk()
             ->assertSee('Arsip Alpha')->assertSee('Arsip Beta');
         $this->actingAs($admin)->get('/laporan')->assertOk()
-            ->assertSee('Laporan Alpha')->assertSee('Laporan Beta');
+            ->assertSee('Folder Anggota DPRD')
+            ->assertSee('Anggota Alpha')->assertSee('Anggota Beta');
         $this->actingAs($admin)->get('/anggota')->assertOk()
             ->assertSee('Anggota Alpha')->assertSee('Anggota Beta');
     }
@@ -162,7 +163,7 @@ class PortalAccessTest extends TestCase
 
         $this->actingAs($admin)->get('/arsip')->assertOk()->assertSee('Belum ada arsip');
         $this->actingAs($admin)->get('/anggota')->assertOk()->assertSee('Belum ada anggota');
-        $this->actingAs($admin)->get('/laporan')->assertOk()->assertSee('Belum ada laporan');
+        $this->actingAs($admin)->get('/laporan')->assertOk()->assertSee('Belum ada anggota DPRD');
     }
 
     public function test_archive_filter_shows_filter_empty_state_instead_of_no_data_state(): void

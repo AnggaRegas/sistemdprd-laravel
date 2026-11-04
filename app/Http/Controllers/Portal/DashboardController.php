@@ -145,10 +145,9 @@ class DashboardController extends Controller
             ->pluck('total', 'status');
 
         $followUp = [
-            'Selesai' => (int) ($rawCounts[LaporanMasyarakat::STATUS_SELESAI] ?? 0),
+            'Ditugaskan' => (int) ($rawCounts[LaporanMasyarakat::STATUS_DITUGASKAN] ?? 0),
             'Diproses' => (int) ($rawCounts[LaporanMasyarakat::STATUS_DIPROSES] ?? 0),
-            'Menunggu Penugasan' => (int) ($rawCounts[LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN] ?? 0),
-            'Baru' => (int) ($rawCounts[LaporanMasyarakat::STATUS_BARU] ?? 0),
+            'Selesai' => (int) ($rawCounts[LaporanMasyarakat::STATUS_SELESAI] ?? 0),
         ];
 
         $memberReportsDone = LaporanMasyarakat::query()
@@ -157,6 +156,7 @@ class DashboardController extends Controller
             ->count();
 
         $assignment = [
+            'id' => $member->id,
             'nama' => $member->nama_lengkap,
             'jabatan' => $member->jabatan ?: 'Anggota DPRD',
             'partai' => $member->partai ?: '—',

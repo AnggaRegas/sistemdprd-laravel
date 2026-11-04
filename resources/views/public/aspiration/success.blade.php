@@ -19,37 +19,25 @@
             <p class="mt-6 text-[10px] font-extrabold uppercase tracking-[.22em] text-[#e6c47d]">Konfirmasi pengiriman</p>
 
             <h1 class="mt-3 text-3xl font-extrabold tracking-[-0.035em] sm:text-[42px]">
-                Aspirasi Berhasil Dikirim
+                Aspirasi Berhasil Dikirim!
             </h1>
 
             <p class="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/65 sm:text-base sm:leading-8">
-                Terima kasih telah menyampaikan aspirasi kepada DPRD Kota Parepare. Aspirasi Anda telah tersimpan dan menunggu peninjauan oleh administrator.
+                Terima kasih telah menyampaikan aspirasi Anda. Aspirasi berhasil masuk ke sistem dan akan melalui proses verifikasi.
             </p>
         </div>
     </section>
 
     <section class="relative z-10 mx-auto -mt-16 max-w-3xl px-5 pb-24 sm:px-8">
         <div class="rounded-3xl border border-[#e7dfd0] bg-white p-6 text-center shadow-[0_28px_80px_-45px_rgba(14,59,49,.5)] sm:p-10">
-            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#a17f3e]">Nomor referensi laporan</p>
-
-            <div class="mt-3 rounded-2xl border border-[#e7dfd0] bg-[#f7f4ec] px-5 py-5">
-                <p class="break-all font-mono text-xl font-extrabold tracking-wide text-[#123b32] sm:text-2xl">{{ $ticket }}</p>
-            </div>
-
-            <p class="mx-auto mt-4 max-w-xl text-[12px] leading-6 text-[#63716c]">
-                Simpan nomor referensi ini sebagai bukti pengiriman. Nomor ini hanya ditampilkan pada halaman konfirmasi dan tidak dapat dipakai untuk membuka data internal laporan.
+            <h2 class="text-xl font-extrabold text-[#123b32] sm:text-2xl">Aspirasi Anda sudah kami terima</h2>
+            <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-[#63716c]">
+                Aspirasi akan ditinjau oleh petugas DPRD. Bila diperlukan, petugas akan menghubungi Anda melalui kontak yang dicantumkan.
             </p>
 
             <div class="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a href="{{ route('welcome') }}" class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#e2dacb] px-5 py-3 text-[13px] font-bold text-[#52605b] transition hover:border-[#0e3b31] hover:text-[#0e3b31] sm:w-auto">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M19 12H5m6 6-6-6 6-6"/>
-                    </svg>
-                    Kembali ke Beranda
-                </a>
-
-                <a href="{{ route('aspirasi.create') }}" class="group inline-flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#0e3b31] px-5 py-3 text-[13px] font-extrabold text-white transition hover:bg-[#082a23] sm:w-auto">
-                    Sampaikan Aspirasi Lagi
+                <a href="{{ route('welcome') }}" class="group inline-flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#0e3b31] px-5 py-3 text-[13px] font-extrabold text-white transition hover:bg-[#082a23] sm:w-auto">
+                    Kembali ke Portal Publik
                     <svg class="h-4 w-4 transition group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                         <path d="M5 12h14m-6-6 6 6-6 6"/>
                     </svg>

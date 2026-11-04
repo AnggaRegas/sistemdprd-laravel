@@ -11,8 +11,10 @@
 @section('content')
     <x-admin.page-header
         eyebrow="Data kelembagaan"
-        title="Daftar Anggota DPRD Kota Parepare"
-        description="Data resmi 25 anggota dewan periode 2024–2029, jabatan, pendamping, dan berkas arsip terkait."
+        :title="auth()->user()->isStaff() ? 'Anggota DPRD Binaan' : 'Daftar Anggota DPRD Kota Parepare'"
+        :description="auth()->user()->isStaff()
+            ? 'Anggota DPRD yang menjadi tanggung jawab pendampingan Anda beserta folder Pokir dan Hasil Reses.'
+            : 'Data resmi 25 anggota dewan periode 2024–2029, jabatan, pendamping, dan berkas arsip terkait.'"
     >
         @can('create', App\Models\DprdMember::class)
             <a href="{{ route('anggota.create') }}" class="btn btn-gold">
@@ -197,7 +199,13 @@
                                     <div class="table-person">
                                         <x-admin.avatar :name="$member->nama_lengkap" :tone="$member->avatar_tone" size="sm" />
                                         <div class="table-person-meta">
-                                            <strong>{{ $member->nama_lengkap }}</strong>
+                                            <strong>
+                                                <a href="{{ route('anggota.show', $member) }}"
+                                                   class="text-decoration-none"
+                                                   style="color: inherit;">
+                                                    {{ $member->nama_lengkap }}
+                                                </a>
+                                            </strong>
                                             <span class="member-code">{{ $member->kode_label }}</span>
                                         </div>
                                     </div>
@@ -234,6 +242,11 @@
                                 </td>
                                 <td>
                                     <div class="table-actions member-actions">
+                                        <a href="{{ route('anggota.show', $member) }}" class="btn btn-emerald btn-sm">
+                                            <i class="ri-folder-user-line" aria-hidden="true"></i>
+                                            Buka Folder
+                                        </a>
+
                                         <a href="{{ route('anggota.arsip', $member) }}" class="btn btn-outline-soft btn-sm">
                                             <i class="ri-archive-2-line" aria-hidden="true"></i>
                                             Buka Arsip

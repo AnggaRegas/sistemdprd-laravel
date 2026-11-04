@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DprdMember;
 use App\Models\LaporanMasyarakat;
 use App\Models\LaporanPenugasan;
+use App\Models\LaporanSimilarityResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -26,99 +27,267 @@ class ReportManagementTest extends TestCase
         return LaporanMasyarakat::factory()->create($overrides);
     }
 
-    public function test_administrator_report_list_supports_kecamatan_date_and_status_filters(): void
+    public function test_administrator_sees_dynamic_member_folders_on_report_list(): void
     {
         $admin = $this->administrator();
-        $memberA = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Filter Alpha']);
-        $memberB = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Filter Beta']);
 
-        $reportA = $this->report([
-            'nomor_tiket' => 'LPR-FILTER-ALPHA',
-            'ringkasan' => 'Laporan Alpha Filter',
+        $memberA = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Folder Alpha']);
+        $memberB = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Folder Beta']);
+
+        $this->report([
+            'nomor_tiket' => 'LPR-FOLDER-A',
+            'ringkasan' => 'Laporan Folder Alpha',
             'dprd_member_id' => $memberA->id,
-            'kategori' => 'Pendidikan',
-            'kecamatan' => 'Kecamatan Bacukiki',
-            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-            'tanggal_laporan' => '2026-09-10',
-        ]);
-
-        $reportB = $this->report([
-            'nomor_tiket' => 'LPR-FILTER-BETA',
-            'ringkasan' => 'Laporan Beta Filter',
-            'dprd_member_id' => $memberB->id,
-            'kategori' => 'Kesehatan',
-            'kecamatan' => 'Kecamatan Soreang',
-            'status' => LaporanMasyarakat::STATUS_DIPROSES,
-            'tanggal_laporan' => '2026-10-10',
         ]);
 
         $this->actingAs($admin)
             ->get(route('laporan.index'))
             ->assertOk()
-            ->assertSee($reportA->ringkasan)
-            ->assertSee($reportB->ringkasan)
-            ->assertSee('Kecamatan Bacukiki')
-            ->assertSee('Kecamatan Soreang');
+            ->assertSee('Folder Anggota DPRD')
+            ->assertSee('Anggota Folder Alpha')
+            ->assertSee('Anggota Folder Beta')
+            ->assertDontSee('Laporan Folder Alpha')
+            ->assertSee('anggota='.$memberA->id, false);
 
         $this->actingAs($admin)
-            ->get(route('laporan.index', ['kecamatan' => 'Kecamatan Bacukiki']))
+            ->get(route('laporan.index', ['anggota' => $memberA->id]))
             ->assertOk()
-            ->assertSee($reportA->ringkasan)
-            ->assertDontSee($reportB->ringkasan);
+            ->assertSee('Laporan Folder Alpha')
+            ->assertDontSee('Laporan Beta Filter');
 
         $this->actingAs($admin)
-            ->get(route('laporan.index', ['kategori' => 'Kesehatan']))
+            ->get(route('laporan.index', ['anggota' => $memberA->id, 'q' => 'Folder Alpha']))
             ->assertOk()
-            ->assertSee($reportB->ringkasan)
-            ->assertDontSee($reportA->ringkasan);
-
-        $this->actingAs($admin)
-            ->get(route('laporan.index', ['tanggal_dari' => '2026-10-01', 'tanggal_sampai' => '2026-10-31']))
-            ->assertOk()
-            ->assertSee($reportB->ringkasan)
-            ->assertDontSee($reportA->ringkasan);
-
-        $this->actingAs($admin)
-            ->get(route('laporan.index', ['status' => 'Menunggu Penugasan']))
-            ->assertOk()
-            ->assertSee($reportA->ringkasan)
-            ->assertDontSee($reportB->ringkasan);
+            ->assertSee('Laporan Folder Alpha')
+            ->assertSee('1 laporan ditemukan');
     }
 
-    public function test_administrator_can_open_report_detail_and_download_private_attachment(): void
+    public function test_administrator_folder_list_supports_member_name_search(): void
     {
-        Storage::fake('local');
+        $admin = $this->administrator();
+
+        DprdMember::factory()->create(['nama_lengkap' => 'Anggota Cari Soreang']);
+        DprdMember::factory()->create(['nama_lengkap' => 'Anggota Lain Ujung']);
+
+        $this->actingAs($admin)
+            ->get(route('laporan.index', ['q' => 'Soreang']))
+            ->assertOk()
+            ->assertSee('Anggota Cari Soreang')
+            ->assertDontSee('Anggota Lain Ujung');
+    }
+
+    public function test_administrator_folder_shows_duplicate_badge_and_detail_shows_percentage_only(): void
+    {
+        config()->set('aspiration_similarity.threshold', 0.80);
 
         $admin = $this->administrator();
-        $path = 'laporan-masyarakat/2026/10/bukti.pdf';
-        Storage::disk('local')->put($path, 'isi lampiran uji');
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Duplikat Uji']);
 
         $report = $this->report([
-            'nomor_tiket' => 'LPR-DETAIL-001',
-            'ringkasan' => 'Detail laporan dengan lampiran',
-            'pelapor_nama' => 'Pelapor Detail',
-            'pelapor_kontak' => 'pelapor@example.com',
-            'kecamatan' => 'Kecamatan Ujung',
-            'lampiran_path' => $path,
-            'lampiran_nama' => 'bukti.pdf',
-            'lampiran_mime' => 'application/pdf',
-            'lampiran_size' => 1024,
+            'nomor_tiket' => 'LPR-DUP-001',
+            'ringkasan' => 'Laporan berpotensi duplikat',
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
         ]);
+
+        $previous = $this->report([
+            'ringkasan' => 'Aspirasi terdahulu yang mirip',
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_SELESAI,
+            'ditutup_at' => now(),
+        ]);
+
+        LaporanSimilarityResult::query()->create([
+            'laporan_masyarakat_id' => $report->id,
+            'compared_laporan_masyarakat_id' => $previous->id,
+            'similarity_score' => 0.95,
+            'checked_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('laporan.index', ['anggota' => $member->id]))
+            ->assertOk()
+            ->assertSee('Laporan berpotensi duplikat')
+            ->assertSee('Berpotensi Duplikat')
+            ->assertDontSee('Kemiripan');
 
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Detail laporan dengan lampiran')
-            ->assertSee('Pelapor Detail')
-            ->assertSee('pelapor@example.com')
-            ->assertSee('Kecamatan Ujung')
-            ->assertSee('bukti.pdf')
-            ->assertSee(route('laporan.lampiran', $report), false);
+            ->assertSee('Hasil Deteksi Kemiripan')
+            ->assertSee('Kemiripan 95,0%')
+            ->assertSee('Aspirasi terdahulu yang mirip');
+    }
+
+    public function test_administrator_can_approve_report_and_auto_dispose_to_member_staff(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Disposisi Uji']);
+        $staff = User::factory()->staff($member)->create(['name' => 'Staf Disposisi Uji']);
+
+        $report = $this->report([
+            'nomor_tiket' => 'LPR-APPROVE-001',
+            'dprd_member_id' => $member->id,
+            'assigned_to' => null,
+            'assigned_at' => null,
+            'status' => LaporanMasyarakat::STATUS_BARU,
+        ]);
 
         $this->actingAs($admin)
-            ->get(route('laporan.lampiran', $report))
-            ->assertOk()
-            ->assertDownload('bukti.pdf');
+            ->patch(route('laporan.persetujuan', $report), [
+                'catatan' => 'Silakan koordinasikan dengan lingkungan terkait.',
+            ])
+            ->assertRedirect(route('laporan.index'))
+            ->assertSessionHas('success');
+
+        $report->refresh();
+
+        $this->assertSame($member->id, $report->dprd_member_id);
+        $this->assertSame($staff->id, $report->assigned_to);
+        $this->assertSame($admin->id, $report->disetujui_oleh);
+        $this->assertNotNull($report->disetujui_at);
+        $this->assertSame(LaporanMasyarakat::STATUS_DITUGASKAN, $report->status);
+        $this->assertNull($report->ditutup_at);
+        $this->assertNotNull($report->assigned_at);
+
+        $this->assertDatabaseHas('laporan_penugasans', [
+            'laporan_masyarakat_id' => $report->id,
+            'user_id' => $staff->id,
+            'assigned_by' => $admin->id,
+            'released_at' => null,
+            'catatan' => 'Silakan koordinasikan dengan lingkungan terkait.',
+        ]);
+
+        $this->assertDatabaseHas('aktivitas_sistem', [
+            'user_id' => $admin->id,
+            'event' => 'laporan.disetujui',
+            'subject_type' => $report->getMorphClass(),
+            'subject_id' => $report->id,
+        ]);
+    }
+
+    public function test_approval_without_active_staff_keeps_report_in_queue(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+
+        DprdMember::factory()->create(); // anggota lain tanpa staf
+
+        $report = $this->report([
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+        ]);
+
+        $this->actingAs($admin)
+            ->patch(route('laporan.persetujuan', $report), [])
+            ->assertRedirect(route('laporan.index'))
+            ->assertSessionHas('warning');
+
+        $report->refresh();
+
+        $this->assertNull($report->assigned_to);
+        $this->assertNull($report->disetujui_oleh);
+        $this->assertNull($report->disetujui_at);
+        $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
+
+        $this->assertDatabaseMissing('laporan_penugasans', [
+            'laporan_masyarakat_id' => $report->id,
+        ]);
+    }
+
+    public function test_approval_disposisikan_ulang_updates_history_without_duplicating_active_assignment(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+        $staff = User::factory()->staff($member)->create();
+
+        $report = $this->report([
+            'dprd_member_id' => $member->id,
+            'assigned_to' => $staff->id,
+            'assigned_at' => now(),
+            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
+        ]);
+
+        LaporanPenugasan::query()->create([
+            'laporan_masyarakat_id' => $report->id,
+            'user_id' => $staff->id,
+            'assigned_by' => $admin->id,
+            'assigned_at' => now(),
+            'released_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->patch(route('laporan.persetujuan', $report), [])
+            ->assertRedirect(route('laporan.index'))
+            ->assertSessionHas('success');
+
+        $report->refresh();
+
+        $this->assertSame($staff->id, $report->assigned_to);
+        $this->assertNotNull($report->disetujui_at);
+
+        $this->assertSame(
+            1,
+            LaporanPenugasan::query()
+                ->where('laporan_masyarakat_id', $report->id)
+                ->whereNull('released_at')
+                ->count()
+        );
+    }
+
+    public function test_closed_report_cannot_be_approved(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+        User::factory()->staff($member)->create();
+
+        $report = $this->report([
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_SELESAI,
+            'ditutup_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('laporan.show', $report))
+            ->patch(route('laporan.persetujuan', $report), [])
+            ->assertRedirect(route('laporan.show', $report))
+            ->assertSessionHasErrorsIn('approval', ['approval']);
+
+        $report->refresh();
+        $this->assertNull($report->disetujui_at);
+    }
+
+    public function test_staff_cannot_approve_or_change_status_of_administrator_actions(): void
+    {
+        $member = DprdMember::factory()->create();
+        $staff = User::factory()->staff($member)->create();
+
+        $report = $this->report([
+            'dprd_member_id' => $member->id,
+            'assigned_to' => $staff->id,
+            'assigned_at' => now(),
+            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
+        ]);
+
+        $this->actingAs($staff)
+            ->patch(route('laporan.persetujuan', $report), [])
+            ->assertForbidden();
+
+        $this->actingAs($staff)
+            ->patch(route('laporan.status.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($staff)
+            ->patch(route('laporan.tindak-lanjut.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrorsIn('status', ['status']);
+
+        $report->refresh();
+        $this->assertSame(LaporanMasyarakat::STATUS_DITUGASKAN, $report->status);
     }
 
     public function test_staff_only_sees_reports_assigned_to_them(): void
@@ -149,13 +318,18 @@ class ReportManagementTest extends TestCase
         $this->actingAs($staffA)
             ->get(route('laporan.index'))
             ->assertOk()
-            ->assertSee($reportA->nomor_tiket)
-            ->assertDontSee($reportB->nomor_tiket);
+            ->assertSee($reportA->pelapor_nama)
+            ->assertSee($reportA->ringkasan)
+            ->assertSee('Lihat Detail')
+            ->assertDontSee($reportB->ringkasan)
+            ->assertDontSee('Folder Anggota DPRD');
 
         $this->actingAs($staffA)
             ->get(route('laporan.show', $reportA))
             ->assertOk()
-            ->assertSee($reportA->ringkasan);
+            ->assertSee($reportA->ringkasan)
+            ->assertDontSee('Hasil Deteksi Kemiripan')
+            ->assertDontSee('Verifikasi &amp; Disposisi', false);
 
         $this->actingAs($staffA)
             ->get(route('laporan.show', $reportB))
@@ -166,100 +340,44 @@ class ReportManagementTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_administrator_can_assign_member_and_matching_active_staff(): void
+    public function test_staff_sees_members_menu_scoped_to_their_assigned_member(): void
     {
-        $admin = $this->administrator();
-        $member = DprdMember::factory()->create();
-        $staff = User::factory()->staff($member)->create(['name' => 'Staf Pendamping Uji']);
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Menu Staf']);
+        $other = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Menu Lain']);
+        $staff = User::factory()->staff($member)->create();
 
-        $report = $this->report([
-            'nomor_tiket' => 'LPR-ASSIGN-001',
-            'dprd_member_id' => null,
-            'assigned_to' => null,
-            'assigned_at' => null,
-            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-        ]);
+        $this->actingAs($staff)
+            ->get(route('dashboard.staf'))
+            ->assertOk()
+            ->assertSee('>Anggota DPRD</span>', false)
+            ->assertSee(route('anggota.index'), false)
+            ->assertSee('Pokir &amp; Hasil Reses', false);
 
-        $this->actingAs($admin)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => $staff->id,
-                'catatan' => 'Mohon ditindaklanjuti pekan ini.',
+        $this->actingAs($staff)
+            ->get(route('anggota.index'))
+            ->assertOk()
+            ->assertSee('Anggota Menu Staf')
+            ->assertDontSee('Anggota Menu Lain')
+            ->assertSee('Buka Folder');
+
+        $this->actingAs($staff)
+            ->get(route('anggota.show', $member))
+            ->assertOk()
+            ->assertSee('Pokir')
+            ->assertSee('Hasil Reses');
+
+        $this->actingAs($staff)
+            ->get(route('anggota.show', $other))
+            ->assertForbidden();
+
+        $this->actingAs($staff)
+            ->patch(route('laporan.status.update', $this->report()), [
+                'status' => LaporanMasyarakat::STATUS_DIPROSES,
             ])
-            ->assertRedirect(route('laporan.index'))
-            ->assertSessionHas('success');
-
-        $report->refresh();
-
-        $this->assertSame($member->id, $report->dprd_member_id);
-        $this->assertSame($staff->id, $report->assigned_to);
-        $this->assertSame(LaporanMasyarakat::STATUS_DITUGASKAN, $report->status);
-        $this->assertNotNull($report->assigned_at);
-
-        $this->assertDatabaseHas('laporan_penugasans', [
-            'laporan_masyarakat_id' => $report->id,
-            'user_id' => $staff->id,
-            'assigned_by' => $admin->id,
-            'released_at' => null,
-            'catatan' => 'Mohon ditindaklanjuti pekan ini.',
-        ]);
-
-        $this->assertDatabaseHas('aktivitas_sistem', [
-            'user_id' => $admin->id,
-            'event' => 'laporan.penugasan',
-            'subject_type' => $report->getMorphClass(),
-            'subject_id' => $report->id,
-        ]);
+            ->assertForbidden();
     }
 
-    public function test_reassignment_releases_previous_assignment_and_creates_new_history(): void
-    {
-        $admin = $this->administrator();
-        $memberA = DprdMember::factory()->create();
-        $memberB = DprdMember::factory()->create();
-        $staffA = User::factory()->staff($memberA)->create();
-        $staffB = User::factory()->staff($memberB)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => $memberA->id,
-            'assigned_to' => $staffA->id,
-            'assigned_at' => now()->subDay(),
-            'status' => LaporanMasyarakat::STATUS_DIPROSES,
-        ]);
-
-        $oldAssignment = LaporanPenugasan::query()->create([
-            'laporan_masyarakat_id' => $report->id,
-            'user_id' => $staffA->id,
-            'assigned_by' => $admin->id,
-            'assigned_at' => now()->subDay(),
-            'released_at' => null,
-        ]);
-
-        $this->actingAs($admin)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $memberB->id,
-                'assigned_to' => $staffB->id,
-                'catatan' => 'Dialihkan karena wilayah tugas.',
-            ])
-            ->assertRedirect(route('laporan.index'));
-
-        $report->refresh();
-        $oldAssignment->refresh();
-
-        $this->assertSame($memberB->id, $report->dprd_member_id);
-        $this->assertSame($staffB->id, $report->assigned_to);
-        $this->assertSame(LaporanMasyarakat::STATUS_DIPROSES, $report->status);
-        $this->assertNotNull($oldAssignment->released_at);
-
-        $this->assertDatabaseHas('laporan_penugasans', [
-            'laporan_masyarakat_id' => $report->id,
-            'user_id' => $staffB->id,
-            'released_at' => null,
-            'catatan' => 'Dialihkan karena wilayah tugas.',
-        ]);
-    }
-
-    public function test_removing_staff_returns_report_to_waiting_queue(): void
+    public function test_staff_can_move_status_only_through_tindak_lanjut_steps(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
@@ -280,71 +398,59 @@ class ReportManagementTest extends TestCase
             'released_at' => null,
         ]);
 
-        $this->actingAs($admin)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => '',
+        $this->actingAs($staff)
+            ->patch(route('laporan.tindak-lanjut.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_DIPROSES,
+                'catatan' => 'Sedang berkoordinasi dengan warga.',
+            ])
+            ->assertRedirect(route('laporan.index'))
+            ->assertSessionHas('success');
+
+        $report->refresh();
+
+        $this->assertSame(LaporanMasyarakat::STATUS_DIPROSES, $report->status);
+        $this->assertSame('Sedang berkoordinasi dengan warga.', $report->catatan_penyelesaian);
+        $this->assertNull($report->ditutup_at);
+        $this->assertNull($report->disetujui_oleh ?: null);
+
+        $this->actingAs($staff)
+            ->patch(route('laporan.tindak-lanjut.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_SELESAI,
+                'catatan' => 'Tindak lanjut selesai.',
             ])
             ->assertRedirect(route('laporan.index'));
 
         $report->refresh();
 
-        $this->assertNull($report->assigned_to);
-        $this->assertNull($report->assigned_at);
-        $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
+        $this->assertSame(LaporanMasyarakat::STATUS_SELESAI, $report->status);
+        $this->assertNotNull($report->ditutup_at);
 
-        $this->assertDatabaseMissing('laporan_penugasans', [
-            'laporan_masyarakat_id' => $report->id,
-            'released_at' => null,
+        $this->assertDatabaseHas('aktivitas_sistem', [
+            'user_id' => $staff->id,
+            'event' => 'laporan.tindak_lanjut',
+            'subject_id' => $report->id,
         ]);
     }
 
-    public function test_assignment_rejects_staff_from_a_different_member(): void
+    public function test_staff_cannot_update_unassigned_report(): void
     {
-        $admin = $this->administrator();
-        $memberA = DprdMember::factory()->create();
-        $memberB = DprdMember::factory()->create();
-        $staffB = User::factory()->staff($memberB)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => $memberA->id,
-            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-        ]);
-
-        $this->actingAs($admin)
-            ->from(route('laporan.show', $report))
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $memberA->id,
-                'assigned_to' => $staffB->id,
-            ])
-            ->assertRedirect(route('laporan.show', $report))
-            ->assertSessionHasErrorsIn('assignment', ['assigned_to']);
-
-        $report->refresh();
-
-        $this->assertNull($report->assigned_to);
-        $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
-    }
-
-    public function test_closed_report_cannot_be_reassigned(): void
-    {
-        $admin = $this->administrator();
         $member = DprdMember::factory()->create();
         $staff = User::factory()->staff($member)->create();
 
         $report = $this->report([
-            'status' => LaporanMasyarakat::STATUS_SELESAI,
-            'ditutup_at' => now(),
+            'dprd_member_id' => $member->id,
+            'assigned_to' => null,
+            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
         ]);
 
-        $this->actingAs($admin)
-            ->from(route('laporan.show', $report))
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => $staff->id,
+        $this->actingAs($staff)
+            ->patch(route('laporan.tindak-lanjut.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_DIPROSES,
             ])
-            ->assertRedirect(route('laporan.show', $report))
-            ->assertSessionHasErrorsIn('assignment', ['dprd_member_id']);
+            ->assertForbidden();
+
+        $report->refresh();
+        $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
     }
 
     public function test_administrator_can_move_status_through_valid_transitions(): void
@@ -395,9 +501,52 @@ class ReportManagementTest extends TestCase
         $assignment->refresh();
 
         $this->assertSame(LaporanMasyarakat::STATUS_SELESAI, $report->status);
-        $this->assertSame('Perbaikan selesai dan sudah diverifikasi.', $report->catatan_penyelesaian);
         $this->assertNotNull($report->ditutup_at);
         $this->assertNotNull($assignment->released_at);
+    }
+
+    public function test_returning_report_to_waiting_queue_clears_assignment_and_approval(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+        $staff = User::factory()->staff($member)->create();
+
+        $report = $this->report([
+            'dprd_member_id' => $member->id,
+            'assigned_to' => $staff->id,
+            'assigned_at' => now(),
+            'disetujui_oleh' => $admin->id,
+            'disetujui_at' => now(),
+            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
+        ]);
+
+        LaporanPenugasan::query()->create([
+            'laporan_masyarakat_id' => $report->id,
+            'user_id' => $staff->id,
+            'assigned_by' => $admin->id,
+            'assigned_at' => now(),
+            'released_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->patch(route('laporan.status.update', $report), [
+                'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+            ])
+            ->assertRedirect(route('laporan.index'))
+            ->assertSessionHas('success');
+
+        $report->refresh();
+
+        $this->assertNull($report->assigned_to);
+        $this->assertNull($report->assigned_at);
+        $this->assertNull($report->disetujui_oleh);
+        $this->assertNull($report->disetujui_at);
+        $this->assertSame(LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN, $report->status);
+
+        $this->assertDatabaseMissing('laporan_penugasans', [
+            'laporan_masyarakat_id' => $report->id,
+            'released_at' => null,
+        ]);
     }
 
     public function test_invalid_status_transition_is_rejected(): void
@@ -421,43 +570,14 @@ class ReportManagementTest extends TestCase
         $this->assertSame(LaporanMasyarakat::STATUS_SELESAI, $report->status);
     }
 
-    public function test_staff_cannot_update_assignment_or_status(): void
-    {
-        $member = DprdMember::factory()->create();
-        $staff = User::factory()->staff($member)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => $member->id,
-            'assigned_to' => $staff->id,
-            'assigned_at' => now(),
-            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
-        ]);
-
-        $this->actingAs($staff)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => $staff->id,
-            ])
-            ->assertForbidden();
-
-        $this->actingAs($staff)
-            ->patch(route('laporan.status.update', $report), [
-                'status' => LaporanMasyarakat::STATUS_DIPROSES,
-            ])
-            ->assertForbidden();
-
-        $report->refresh();
-        $this->assertSame(LaporanMasyarakat::STATUS_DITUGASKAN, $report->status);
-    }
-
-    public function test_staff_can_download_attachment_for_assigned_report_only(): void
+    public function test_staff_can_download_and_view_attachment_for_assigned_report_only(): void
     {
         Storage::fake('local');
 
         $memberA = DprdMember::factory()->create();
         $memberB = DprdMember::factory()->create();
         $staffA = User::factory()->staff($memberA)->create();
-        $staffB = User::factory()->staff($memberB)->create();
+        User::factory()->staff($memberB)->create();
 
         $pathA = 'laporan-masyarakat/2026/10/alpha.pdf';
         $pathB = 'laporan-masyarakat/2026/10/beta.pdf';
@@ -477,8 +597,6 @@ class ReportManagementTest extends TestCase
 
         $reportB = $this->report([
             'dprd_member_id' => $memberB->id,
-            'assigned_to' => $staffB->id,
-            'assigned_at' => now(),
             'status' => LaporanMasyarakat::STATUS_DIPROSES,
             'lampiran_path' => $pathB,
             'lampiran_nama' => 'beta.pdf',
@@ -492,7 +610,16 @@ class ReportManagementTest extends TestCase
             ->assertDownload('alpha.pdf');
 
         $this->actingAs($staffA)
+            ->get(route('laporan.lampiran.lihat', $reportA))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        $this->actingAs($staffA)
             ->get(route('laporan.lampiran', $reportB))
+            ->assertNotFound();
+
+        $this->actingAs($staffA)
+            ->get(route('laporan.lampiran.lihat', $reportB))
             ->assertNotFound();
     }
 
@@ -544,161 +671,5 @@ class ReportManagementTest extends TestCase
             ->assertOk()
             ->assertDontSee('value="/dashboard"', false)
             ->assertDontSee('return_to=%2Fdashboard', false);
-    }
-
-    public function test_assignment_redirects_to_validated_report_list_return_url(): void
-    {
-        $admin = $this->administrator();
-        $member = DprdMember::factory()->create();
-        $staff = User::factory()->staff($member)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => null,
-            'assigned_to' => null,
-            'assigned_at' => null,
-            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-        ]);
-
-        $this->actingAs($admin)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => $staff->id,
-                'return_to' => '/laporan?status=Menunggu+Penugasan&q=lampu&page=1&redirect=https%3A%2F%2Fevil.example',
-            ])
-            ->assertRedirect('/laporan?status=Menunggu+Penugasan&q=lampu&page=1')
-            ->assertSessionHas('success');
-
-        $this->assertSame($staff->id, $report->refresh()->assigned_to);
-    }
-
-    public function test_assignment_rejects_external_return_url(): void
-    {
-        $admin = $this->administrator();
-        $member = DprdMember::factory()->create();
-        $staff = User::factory()->staff($member)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => null,
-            'assigned_to' => null,
-            'assigned_at' => null,
-            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
-        ]);
-
-        $this->actingAs($admin)
-            ->patch(route('laporan.penugasan.update', $report), [
-                'dprd_member_id' => $member->id,
-                'assigned_to' => $staff->id,
-                'return_to' => 'https://evil.example/laporan?status=Menunggu+Penugasan',
-            ])
-            ->assertRedirect(route('laporan.index'))
-            ->assertSessionHas('success');
-
-        $this->assertSame($staff->id, $report->refresh()->assigned_to);
-    }
-
-    public function test_administrator_can_confirm_and_correct_final_commission_without_overwriting_classification(): void
-    {
-        $this->seed(\Database\Seeders\KomisiSeeder::class);
-
-        $admin = $this->administrator();
-        $commissions = \App\Models\DprdCommission::query()->orderBy('id')->get();
-        $first = $commissions[0];
-        $second = $commissions[1];
-        $third = $commissions[2];
-
-        $report = $this->report([
-            'klasifikasi_komisi_id' => $second->id,
-            'klasifikasi_skor' => 9,
-            'klasifikasi_skor_kedua' => 0,
-            'klasifikasi_status' => LaporanMasyarakat::KLASIFIKASI_DIREKOMENDASIKAN,
-            'klasifikasi_metode' => 'rule_based_weighted_keywords_v1',
-            'klasifikasi_alasan' => 'Uji rekomendasi otomatis.',
-            'klasifikasi_dianalisis_at' => now(),
-        ]);
-
-        $this->actingAs($admin)
-            ->patch(route('laporan.komisi.update', $report), [
-                'komisi_final_id' => $third->id,
-                'catatan' => 'Dikoreksi setelah rapat koordinasi.',
-                'return_to' => '/laporan?status=Menunggu+Penugasan',
-            ])
-            ->assertRedirect('/laporan?status=Menunggu+Penugasan')
-            ->assertSessionHas('success');
-
-        $report->refresh();
-
-        $this->assertSame($third->id, $report->komisi_final_id);
-        $this->assertSame($second->id, $report->klasifikasi_komisi_id);
-        $this->assertSame($admin->id, $report->komisi_final_ditetapkan_oleh);
-        $this->assertNotNull($report->komisi_final_ditetapkan_at);
-        $this->assertSame($third->name, $report->komisi_efektif_label);
-
-        $this->assertDatabaseHas('aktivitas_sistem', [
-            'user_id' => $admin->id,
-            'event' => 'laporan.komisi',
-            'subject_type' => $report->getMorphClass(),
-            'subject_id' => $report->id,
-        ]);
-
-        $this->actingAs($admin)
-            ->patch(route('laporan.komisi.update', $report), [
-                'komisi_final_id' => $first->id,
-            ])
-            ->assertRedirect(route('laporan.index'));
-
-        $report->refresh();
-
-        $this->assertSame($first->id, $report->komisi_final_id);
-        $this->assertSame($second->id, $report->klasifikasi_komisi_id);
-    }
-
-    public function test_final_commission_requires_an_active_commission(): void
-    {
-        $admin = $this->administrator();
-        $report = $this->report();
-        $inactive = \App\Models\DprdCommission::factory()->inactive()->create();
-
-        $this->actingAs($admin)
-            ->from(route('laporan.show', $report))
-            ->patch(route('laporan.komisi.update', $report), [
-                'komisi_final_id' => $inactive->id,
-            ])
-            ->assertRedirect(route('laporan.show', $report))
-            ->assertSessionHasErrorsIn('commission', ['komisi_final_id']);
-
-        $this->assertNull($report->refresh()->komisi_final_id);
-
-        $this->actingAs($admin)
-            ->from(route('laporan.show', $report))
-            ->patch(route('laporan.komisi.update', $report), [
-                'komisi_final_id' => 999999,
-            ])
-            ->assertRedirect(route('laporan.show', $report))
-            ->assertSessionHasErrorsIn('commission', ['komisi_final_id']);
-
-        $this->assertNull($report->refresh()->komisi_final_id);
-    }
-
-    public function test_staff_cannot_set_final_commission(): void
-    {
-        $member = DprdMember::factory()->create();
-        $staff = User::factory()->staff($member)->create();
-
-        $report = $this->report([
-            'dprd_member_id' => $member->id,
-            'assigned_to' => $staff->id,
-            'assigned_at' => now(),
-            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
-        ]);
-
-        $commission = \App\Models\DprdCommission::factory()->create();
-
-        $this->actingAs($staff)
-            ->patch(route('laporan.komisi.update', $report), [
-                'komisi_final_id' => $commission->id,
-            ])
-            ->assertForbidden();
-
-        $this->assertNull($report->refresh()->komisi_final_id);
     }
 }

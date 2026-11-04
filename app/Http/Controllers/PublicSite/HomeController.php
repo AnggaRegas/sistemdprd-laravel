@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\PublicSite;
 
 use App\Http\Controllers\Controller;
-use App\Models\LandingAgenda;
 use App\Models\LandingGallery;
 use App\Models\LandingGalleryPhoto;
 use App\Models\LandingNews;
@@ -33,17 +32,8 @@ class HomeController extends Controller
             ->limit(3)
             ->get();
 
-        $upcomingAgendas = LandingAgenda::query()
-            ->published()
-            ->whereDate('event_date', '>=', now()->toDateString())
-            ->orderBy('event_date')
-            ->orderBy('start_time')
-            ->limit(4)
-            ->get();
-
         return view('welcome', [
             'latestNews' => $latestNews,
-            'upcomingAgendas' => $upcomingAgendas,
             'galleryPhotos' => $this->galleryPreview(),
         ]);
     }

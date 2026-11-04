@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -63,6 +64,17 @@ class DprdMember extends Model
     public function region(): BelongsTo
     {
         return $this->belongsTo(DprdRegion::class, 'dprd_region_id');
+    }
+
+    /**
+     * Wilayah aspirasi yang diwakili anggota. Kolom dprd_region_id lama tetap
+     * dipertahankan untuk kompatibilitas, sedangkan pivot ini mendukung satu
+     * anggota mewakili lebih dari satu wilayah.
+     */
+    public function regions(): BelongsToMany
+    {
+        return $this->belongsToMany(DprdRegion::class, 'dprd_member_regions', 'dprd_member_id', 'dprd_region_id')
+            ->withTimestamps();
     }
 
     /**
@@ -126,7 +138,10 @@ class DprdMember extends Model
 
     public function scopeInRegion(Builder $query, int $regionId): Builder
     {
-        return $query->where('dprd_region_id', $regionId);
+        return $query->where(function (Builder $builder) use ($regionId) {
+            $builder->where('dprd_region_id', $regionId)
+                ->orWhereHas('regions', fn (Builder $regions) => $regions->where('dprd_regions.id', $regionId));
+        });
     }
 
     /**

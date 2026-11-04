@@ -53,12 +53,13 @@ class PortalPresenter
     /**
      * @return array<string, mixed>
      */
-    public static function report(LaporanMasyarakat $report): array
+    public static function report(LaporanMasyarakat $report, bool $duplicates = false): array
     {
         return [
             'id' => $report->id,
             'tiket' => $report->nomor_tiket,
             'pelapor' => $report->pelapor_nama,
+            'alamat' => $report->pelapor_alamat ?: '—',
             'kontak' => $report->pelapor_kontak ?: '—',
             'ringkasan' => $report->ringkasan,
             'judul' => $report->ringkasan,
@@ -67,9 +68,17 @@ class PortalPresenter
             'tanggal' => $report->tanggal_laporan?->toDateString(),
             'tanggal_masuk' => $report->created_at?->toIso8601String(),
             'anggota' => $report->member?->nama_lengkap ?? 'Belum ditentukan',
+            'anggota_id' => $report->dprd_member_id,
             'staf' => $report->assignee?->name ?? 'Belum ditugaskan',
-            'status' => $report->status_label,
+            'berpotensi_duplikat' => $duplicates
+                && $report->similarityResults()->diAtasAmbang()->exists(),
+            // Label status khusus daftar sederhana. Nilai status asli tetap
+            // dikirim dan divalidasi oleh backend saat diperbarui.
+            'status' => self::simpleReportStatus($report->status),
             'status_value' => $report->status,
+            'available_statuses' => collect($report->availableStatuses())
+                ->mapWithKeys(static fn (string $status) => [$status => self::simpleReportStatus($status)])
+                ->all(),
             'klasifikasi_status' => $report->klasifikasi_status,
             'klasifikasi_status_label' => $report->klasifikasi_status_label,
             'klasifikasi_komisi' => $report->klasifikasiKomisi?->name,
@@ -104,6 +113,17 @@ class PortalPresenter
         $value = array_search($label, $labels, true);
 
         return $value === false ? null : $value;
+    }
+
+    private static function simpleReportStatus(string $status): string
+    {
+        return match ($status) {
+            LaporanMasyarakat::STATUS_DIPROSES,
+            LaporanMasyarakat::STATUS_DITUGASKAN => 'Sedang Diproses',
+            LaporanMasyarakat::STATUS_SELESAI => 'Selesai',
+            LaporanMasyarakat::STATUS_DITOLAK => 'Tidak Dilanjutkan',
+            default => 'Belum Diproses',
+        };
     }
 
     private static function toneForId(int $id): string

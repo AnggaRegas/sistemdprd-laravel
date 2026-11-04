@@ -42,6 +42,10 @@
                     </div>
                     <h2>{{ $assignment['nama'] }}</h2>
                     <p>{{ $assignment['jabatan'] }} &middot; {{ $assignment['partai'] }} &middot; Dapil {{ $assignment['dapil'] }}</p>
+                    <a href="{{ route('anggota.show', $assignment['id']) }}" class="assignment-folder-link">
+                        Buka folder Pokir &amp; Hasil Reses
+                        <i class="ri-arrow-right-line" aria-hidden="true"></i>
+                    </a>
                 </div>
             </div>
 
@@ -155,8 +159,7 @@
                         $followUpColors = [
                             'Selesai' => '#16794f',
                             'Diproses' => '#2c6aa0',
-                            'Menunggu Penugasan' => '#c9a45c',
-                            'Baru' => '#93a09a',
+                            'Ditugaskan' => '#c9a45c',
                         ];
                     @endphp
 
@@ -191,6 +194,22 @@
 
                 <div class="app-card-body">
                     <div class="quick-grid">
+                        <a href="{{ route('anggota.index') }}" class="quick-action">
+                            <span class="quick-action-icon"><i class="ri-team-line" aria-hidden="true"></i></span>
+                            <span>
+                                <strong>Anggota DPRD</strong>
+                                <span>Anggota yang Anda dampingi</span>
+                            </span>
+                        </a>
+
+                        <a href="{{ route('anggota.show', $assignment['id']) }}" class="quick-action">
+                            <span class="quick-action-icon"><i class="ri-folder-user-line" aria-hidden="true"></i></span>
+                            <span>
+                                <strong>Pokir &amp; Hasil Reses</strong>
+                                <span>Folder anggota binaan</span>
+                            </span>
+                        </a>
+
                         <a href="{{ route('arsip.index', ['modal' => 'tambah']) }}" class="quick-action">
                             <span class="quick-action-icon"><i class="ri-file-add-line" aria-hidden="true"></i></span>
                             <span>
@@ -293,3 +312,22 @@
         </div>
     </div>
 @endsection
+
+@push('styles')
+    <style>
+        .assignment-folder-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            font-size: 10.5px;
+            font-weight: 600;
+            color: #155043;
+            text-decoration: none;
+        }
+
+        .assignment-folder-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+@endpush

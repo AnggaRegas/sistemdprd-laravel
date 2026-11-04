@@ -159,7 +159,7 @@
                     <div class="hidden items-center gap-7 lg:flex">
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#beranda">Beranda</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#layanan">Layanan</a>
-                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#informasi">Informasi</a>
+                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#berita">Informasi</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#alur">Alur Pengajuan</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#faq">FAQ</a>
                     </div>
@@ -207,7 +207,7 @@
                     <div class="flex flex-col">
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#beranda">Beranda</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#layanan">Layanan</a>
-                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#informasi">Informasi</a>
+                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#berita">Informasi</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#alur">Alur Pengajuan</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#faq">FAQ</a>
 
@@ -277,7 +277,7 @@
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
                         <a href="{{ route('welcome') }}#beranda" class="transition hover:text-[#e6c47d]">Beranda</a>
                         <a href="{{ route('welcome') }}#layanan" class="transition hover:text-[#e6c47d]">Layanan</a>
-                        <a href="{{ route('welcome') }}#informasi" class="transition hover:text-[#e6c47d]">Informasi</a>
+                        <a href="{{ route('welcome') }}#berita" class="transition hover:text-[#e6c47d]">Informasi</a>
                         <a href="{{ route('welcome') }}#alur" class="transition hover:text-[#e6c47d]">Alur Pengajuan</a>
                         <a href="{{ route('welcome') }}#faq" class="transition hover:text-[#e6c47d]">Pertanyaan Umum</a>
                     </div>
