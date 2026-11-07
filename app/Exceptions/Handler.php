@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -25,6 +26,23 @@ class Handler extends ExceptionHandler
     {
         $this->reportable(function (Throwable $e) {
             //
+        });
+
+        /*
+         * BODY terlalu besar melewati post_max_size: PHP mengosongkan
+         * seluruh input sebelum Laravel menerima request, sehingga pesan
+         * ini ditampilkan alih-alih error 413 yang teknis.
+         */
+        $this->renderable(function (PostTooLargeException $e, $request) {
+            if ($request->expectsJson()) {
+                return null;
+            }
+
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'lampiran' => 'Ukuran file terlalu besar. Maksimal ukuran lampiran adalah 20 MB.',
+                ]);
         });
     }
 }

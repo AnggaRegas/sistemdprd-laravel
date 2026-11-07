@@ -186,8 +186,19 @@
             }
         }
 
-        .hero-title {
-            font-size: clamp(1.85rem, 4.4vw, 2.8rem);
+        .hero-brand-title {
+            font-size: clamp(2.75rem, 8vw, 4.75rem);
+            line-height: .95;
+            letter-spacing: -.045em;
+        }
+
+        .hero-brand-subtitle {
+            max-width: 34rem;
+            color: rgba(255, 255, 255, .82);
+            font-size: clamp(1rem, 2.2vw, 1.25rem);
+            font-weight: 600;
+            line-height: 1.5;
+            letter-spacing: -.01em;
         }
 
         .nav-link {
@@ -782,16 +793,20 @@
                         Pusat Informasi
                     </div>
 
-                    <h1 class="hero-title reveal reveal-delay-1 mt-6 font-extrabold leading-[1.12] tracking-[-0.035em] text-white sm:mt-7">
-                        Sampaikan Aspirasi &amp; Pengaduan Anda<br>
-                        <span class="text-[#e6c47d]">Langsung ke Wakil Rakyat.</span>
+                    <h1 class="hero-brand-title reveal reveal-delay-1 mt-5 font-extrabold text-white sm:mt-6">
+                        ALURAKSI
                     </h1>
 
-                    <p class="reveal reveal-delay-2 mt-6 max-w-xl text-[15px] leading-7 text-white/65 sm:text-base sm:leading-8">
+                    <p class="hero-brand-subtitle reveal reveal-delay-1 mt-3">
+                        Sampaikan Aspirasi &amp; Pengaduan Anda
+                        <span class="block text-[#e6c47d]">Langsung ke Wakil Rakyat</span>
+                    </p>
+
+                    <p class="reveal reveal-delay-2 mt-5 max-w-xl text-[15px] leading-7 text-white/65 sm:text-base sm:leading-8">
                         Temukan informasi seputar DPRD Kota Parepare dan sampaikan aspirasi atau pengaduan Anda melalui satu portal yang mudah diakses.
                     </p>
 
-                    <div class="reveal reveal-delay-2 mt-8 flex flex-col gap-3 sm:flex-row">
+                    <div class="reveal reveal-delay-2 mt-7 flex flex-col gap-3 sm:flex-row">
                         <a href="{{ route('aspirasi.create') }}"
                            class="group inline-flex items-center justify-center gap-3 rounded-xl bg-[#e6c47d] px-6 py-3.5 text-sm font-extrabold text-[#123b32] shadow-[0_16px_36px_-16px_rgba(230,196,125,.55)] transition hover:-translate-y-0.5 hover:bg-[#f0d696]">
                             Sampaikan Aspirasi

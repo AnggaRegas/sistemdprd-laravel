@@ -57,6 +57,9 @@ class PublicAspirationTest extends TestCase
     {
         $this->get(route('welcome'))
             ->assertOk()
+            ->assertSee('ALURAKSI')
+            ->assertSeeText('Sampaikan Aspirasi & Pengaduan Anda')
+            ->assertSeeText('Langsung ke Wakil Rakyat')
             ->assertSee('Sampaikan Aspirasi')
             ->assertSee(route('aspirasi.create'), false);
     }
@@ -120,16 +123,44 @@ class PublicAspirationTest extends TestCase
                 'lampiran' => UploadedFile::fake()->create('dokumen.exe', 10, 'application/x-msdownload'),
             ]))
             ->assertRedirect(route('aspirasi.create'))
-            ->assertSessionHasErrors('lampiran');
+            ->assertSessionHasErrors([
+                'lampiran' => 'Format file tidak didukung. Silakan gunakan format file yang diperbolehkan.',
+            ]);
 
         $this->from(route('aspirasi.create'))
             ->post(route('aspirasi.store'), $this->payload($member, [
-                'lampiran' => UploadedFile::fake()->create('bukti.pdf', 5200, 'application/pdf'),
+                'lampiran' => UploadedFile::fake()->create('bukti.pdf', 20481, 'application/pdf'),
             ]))
             ->assertRedirect(route('aspirasi.create'))
-            ->assertSessionHasErrors('lampiran');
+            ->assertSessionHasErrors([
+                'lampiran' => 'Ukuran file terlalu besar. Maksimal ukuran lampiran adalah 20 MB.',
+            ]);
 
         $this->assertDatabaseCount('laporan_masyarakat', 0);
+    }
+
+    public function test_public_form_accepts_attachments_up_to_twenty_megabytes(): void
+    {
+        Storage::fake('local');
+
+        $member = $this->member();
+
+        foreach ([2048, 10240, 20480] as $sizeKb) {
+            $this->post(route('aspirasi.store'), $this->payload($member, [
+                'lampiran' => UploadedFile::fake()->create(
+                    'bukti-'.$sizeKb.'.pdf',
+                    $sizeKb,
+                    'application/pdf'
+                ),
+            ]))->assertRedirect(route('aspirasi.success'));
+        }
+
+        $this->assertDatabaseCount('laporan_masyarakat', 3);
+
+        $this->assertSame(
+            [2048 * 1024, 10240 * 1024, 20480 * 1024],
+            LaporanMasyarakat::query()->orderBy('id')->pluck('lampiran_size')->all()
+        );
     }
 
     public function test_public_form_rejects_member_from_another_region(): void

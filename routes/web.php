@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\ForcePasswordController;
+use App\Http\Controllers\Portal\AnalysisController;
 use App\Http\Controllers\Portal\ArchiveCategoryController;
 use App\Http\Controllers\Portal\ArchiveController;
 use App\Http\Controllers\Portal\ArchiveDocumentController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Portal\LandingNewsController;
 use App\Http\Controllers\Portal\MemberArchiveController;
 use App\Http\Controllers\Portal\MemberController;
 use App\Http\Controllers\Portal\NotificationController;
+use App\Http\Controllers\Portal\PenugasanController;
 use App\Http\Controllers\Portal\RdpDocumentController;
 use App\Http\Controllers\Portal\RdpMeetingController;
 use App\Http\Controllers\Portal\ReportController;
@@ -339,6 +341,21 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
         Route::post('/notifikasi/baca-semua', [NotificationController::class, 'markAll'])
             ->name('notifikasi.baca-semua');
 
+        /*
+        |----------------------------------------------------------------------
+        | Monitoring penugasan staf pendamping
+        |----------------------------------------------------------------------
+        | Superadmin melihat seluruh penugasan dan hasil tindak lanjut. Staf
+        | hanya dapat membuka penugasan miliknya sendiri (diperiksa controller).
+        */
+        Route::get('/penugasan', [PenugasanController::class, 'index'])->name('penugasan.index');
+        Route::get('/penugasan/{penugasan}', [PenugasanController::class, 'show'])
+            ->whereNumber('penugasan')
+            ->name('penugasan.show');
+        Route::get('/penugasan/{penugasan}/bukti', [PenugasanController::class, 'downloadBukti'])
+            ->whereNumber('penugasan')
+            ->name('penugasan.bukti');
+
         Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');
         Route::get('/laporan/{laporan}', [ReportController::class, 'show'])
             ->whereNumber('laporan')
@@ -357,12 +374,24 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
             Route::patch('/laporan/{laporan}/status', [ReportController::class, 'updateStatus'])
                 ->whereNumber('laporan')
                 ->name('laporan.status.update');
+            Route::get('/laporan/{laporan}/analisis', [AnalysisController::class, 'show'])
+                ->whereNumber('laporan')
+                ->name('laporan.analisis');
+            Route::post('/penugasan/{penugasan}/verifikasi', [PenugasanController::class, 'verify'])
+                ->whereNumber('penugasan')
+                ->name('penugasan.verifikasi');
         });
 
         Route::middleware('role:staf_pendamping')->group(function () {
             Route::patch('/laporan/{laporan}/tindak-lanjut', [ReportController::class, 'updateStatusForStaff'])
                 ->whereNumber('laporan')
                 ->name('laporan.tindak-lanjut.update');
+            Route::post('/penugasan/{penugasan}/mulai', [PenugasanController::class, 'start'])
+                ->whereNumber('penugasan')
+                ->name('penugasan.mulai');
+            Route::post('/penugasan/{penugasan}/selesai', [PenugasanController::class, 'complete'])
+                ->whereNumber('penugasan')
+                ->name('penugasan.selesai');
         });
 
         Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

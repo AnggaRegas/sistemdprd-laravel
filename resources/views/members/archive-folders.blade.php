@@ -117,7 +117,11 @@
             <div class="app-card-body">
                 <div class="archive-grid">
                     @foreach ($folders as $folder)
-                        <article class="archive-card archive-folder-card">
+                        <article class="archive-card archive-folder-card archive-card-linkable">
+                            <a href="{{ route('anggota.arsip.dokumen', [$member, $category, $archiveYear, $folder]) }}"
+                               class="archive-card-link"
+                               aria-label="Lihat dokumen folder {{ $folder->nama }}"></a>
+
                             <div class="archive-card-top">
                                 <span class="archive-card-icon archive-card-icon-blue" aria-hidden="true">
                                     <i class="ri-folder-3-line"></i>
@@ -145,14 +149,8 @@
                                 </span>
                             </div>
 
-                            <div class="archive-card-actions">
-                                <a href="{{ route('anggota.arsip.dokumen', [$member, $category, $archiveYear, $folder]) }}"
-                                   class="btn btn-emerald btn-sm">
-                                    Buka Folder
-                                    <i class="ri-arrow-right-line" aria-hidden="true"></i>
-                                </a>
-
-                                @can('manage-member-archives', $member)
+                            @can('manage-member-archives', $member)
+                                <div class="archive-card-actions">
                                     <a href="{{ route('anggota.arsip.folder.edit', [$member, $category, $archiveYear, $folder]) }}"
                                        class="btn btn-outline-soft btn-sm">
                                         <i class="ri-edit-line" aria-hidden="true"></i>
@@ -175,8 +173,8 @@
                                         <i class="ri-delete-bin-6-line" aria-hidden="true"></i>
                                         Hapus
                                     </button>
-                                @endcan
-                            </div>
+                                </div>
+                            @endcan
                         </article>
                     @endforeach
                 </div>

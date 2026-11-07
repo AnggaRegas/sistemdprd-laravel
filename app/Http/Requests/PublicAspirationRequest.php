@@ -74,7 +74,7 @@ class PublicAspirationRequest extends FormRequest
             'lampiran' => [
                 'nullable',
                 'file',
-                'max:5120',
+                'max:20480',
                 'mimes:pdf,jpg,jpeg,png,webp,doc,docx',
             ],
             'persetujuan' => ['accepted'],
@@ -103,8 +103,8 @@ class PublicAspirationRequest extends FormRequest
             'pelapor_alamat.max' => 'Alamat lengkap maksimal 1.000 karakter.',
             'isi.required' => 'Isi aspirasi wajib diisi.',
             'lampiran.file' => 'Lampiran harus berupa berkas yang valid.',
-            'lampiran.max' => 'Ukuran lampiran maksimal 5 MB.',
-            'lampiran.mimes' => 'Jenis lampiran harus PDF, JPG, JPEG, PNG, WEBP, DOC, atau DOCX.',
+            'lampiran.max' => 'Ukuran file terlalu besar. Maksimal ukuran lampiran adalah 20 MB.',
+            'lampiran.mimes' => 'Format file tidak didukung. Silakan gunakan format file yang diperbolehkan.',
             'persetujuan.accepted' => 'Persetujuan pemrosesan data wajib dicentang sebelum aspirasi dikirim.',
         ];
     }
@@ -150,7 +150,7 @@ class PublicAspirationRequest extends FormRequest
             if (is_array($upload) && ($upload['error'] ?? UPLOAD_ERR_OK) === UPLOAD_ERR_INI_SIZE) {
                 $validator->errors()->add(
                     'lampiran',
-                    'Ukuran lampiran melebihi batas server. Perkecil ukuran berkas lalu unggah kembali.'
+                    'Ukuran file terlalu besar. Maksimal ukuran lampiran adalah 20 MB.'
                 );
             }
         });

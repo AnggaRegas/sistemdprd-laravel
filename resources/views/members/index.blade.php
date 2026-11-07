@@ -242,11 +242,6 @@
                                 </td>
                                 <td>
                                     <div class="table-actions member-actions">
-                                        <a href="{{ route('anggota.show', $member) }}" class="btn btn-emerald btn-sm">
-                                            <i class="ri-folder-user-line" aria-hidden="true"></i>
-                                            Buka Folder
-                                        </a>
-
                                         <a href="{{ route('anggota.arsip', $member) }}" class="btn btn-outline-soft btn-sm">
                                             <i class="ri-archive-2-line" aria-hidden="true"></i>
                                             Buka Arsip

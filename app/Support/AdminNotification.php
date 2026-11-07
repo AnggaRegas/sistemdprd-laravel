@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Arsip;
 use App\Models\LaporanMasyarakat;
+use App\Models\LaporanPenugasan;
 use App\Models\NotificationRead;
 use App\Models\User;
 
@@ -106,6 +107,44 @@ class AdminNotification
     private static function forAdministrator(): array
     {
         $items = [];
+
+        /*
+         * Notifikasi penyelesaian tugas staf pendamping dibangun dari data
+         * penugasan nyata. Kunci stabil per penugasan mencegah notifikasi
+         * ganda saat request penyelesaian dikirim berulang.
+         */
+        $completedAssignments = LaporanPenugasan::query()
+            ->where('status', LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI)
+            ->whereNotNull('completed_at')
+            ->with(['laporan.member', 'user', 'completedBy'])
+            ->latest('completed_at')
+            ->latest('id')
+            ->limit(3)
+            ->get();
+
+        foreach ($completedAssignments as $assignment) {
+            $report = $assignment->laporan;
+
+            if (! $report) {
+                continue;
+            }
+
+            $member = $report->member?->nama_lengkap;
+            $staffName = $assignment->completedBy?->name
+                ?? $assignment->user?->name
+                ?? 'Staf Pendamping';
+
+            $items[] = [
+                'key' => 'penugasan-selesai-'.$assignment->id,
+                'judul' => 'Penugasan telah diselesaikan',
+                'isi' => 'Staff Pendamping '.$staffName.' telah menyelesaikan tindak lanjut aspirasi '
+                    .$report->ringkasan.($member ? ' ('.$member.')' : '').'.',
+                'waktu' => $assignment->completed_at?->locale('id')->diffForHumans() ?? 'Baru saja',
+                'icon' => 'ri-task-line',
+                'tone' => 'success',
+                'url' => route('penugasan.show', $assignment),
+            ];
+        }
 
         $newReports = LaporanMasyarakat::query()
             ->whereIn('status', [

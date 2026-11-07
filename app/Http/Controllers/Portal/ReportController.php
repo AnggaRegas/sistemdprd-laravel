@@ -252,23 +252,11 @@ class ReportController extends Controller
             }
         }
 
-        $similarities = $isAdministrator
-            ? LaporanSimilarityResult::query()
-                ->where('laporan_masyarakat_id', $report->id)
-                ->diAtasAmbang()
-                ->with([
-                    'comparedLaporan',
-                    'comparedLaporan.member',
-                ])
-                ->get()
-            : collect();
-
         return view('reports.show', [
             'report' => $report,
             'isAdministrator' => $isAdministrator,
             'autoStaff' => $autoStaff,
             'statusOptions' => $statusOptions,
-            'similarities' => $similarities,
             'isStaff' => $user->isStaff(),
             'canStaffUpdateStatus' => $user->isStaff() && $statusOptions !== [],
             'returnUrl' => SafeReturnUrl::reportsIndex($request->query('return_to'), $request),
@@ -477,6 +465,24 @@ class ReportController extends Controller
             }
 
             $report->save();
+
+            /*
+             * Saat staf memindahkan status laporan ke Diproses, penugasan aktif
+             * miliknya ikut tercatat sedang ditindaklanjuti. Status penugasan
+             * tetap terpisah dan tidak memengaruhi status aspirasi.
+             */
+            if ($newStatus === LaporanMasyarakat::STATUS_DIPROSES) {
+                LaporanPenugasan::query()
+                    ->where('laporan_masyarakat_id', $report->id)
+                    ->where('user_id', $staff->id)
+                    ->whereNull('released_at')
+                    ->where('status', LaporanPenugasan::STATUS_DITUGASKAN)
+                    ->update([
+                        'status' => LaporanPenugasan::STATUS_SEDANG_DITINDAKLANJUTI,
+                        'started_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+            }
 
             AktivitasSistem::catat(
                 'laporan.tindak_lanjut',

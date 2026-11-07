@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Arsip;
 use App\Models\DprdMember;
 use App\Models\LaporanMasyarakat;
+use App\Models\LaporanPenugasan;
 use App\Models\User;
 use App\Support\PortalData;
 use App\Support\PortalPresenter;
@@ -30,6 +31,27 @@ class DashboardController extends Controller
             ->count();
 
         $statusCounts = LaporanMasyarakat::statusLabelCountsFor($user);
+
+        $assignmentStats = [
+            'total' => LaporanPenugasan::query()->count(),
+            'ditugaskan' => LaporanPenugasan::query()
+                ->where('status', LaporanPenugasan::STATUS_DITUGASKAN)
+                ->whereNull('released_at')
+                ->count(),
+            'sedang' => LaporanPenugasan::query()
+                ->where('status', LaporanPenugasan::STATUS_SEDANG_DITINDAKLANJUTI)
+                ->count(),
+            'selesai' => LaporanPenugasan::query()
+                ->where('status', LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI)
+                ->count(),
+        ];
+
+        $latestPenugasan = LaporanPenugasan::query()
+            ->with(['laporan.member', 'user', 'completedBy'])
+            ->latest('assigned_at')
+            ->latest('id')
+            ->limit(5)
+            ->get();
 
         $stats = [
             [
@@ -104,6 +126,8 @@ class DashboardController extends Controller
             'recentArchives' => $recentArchives,
             'latestReports' => $latestReports,
             'statusCounts' => $statusCounts,
+            'assignmentStats' => $assignmentStats,
+            'latestPenugasan' => $latestPenugasan,
         ]);
     }
 
@@ -119,35 +143,53 @@ class DashboardController extends Controller
             abort(403, 'Akun staf pendamping belum dikaitkan dengan anggota DPRD.');
         }
 
-        $assignedBase = LaporanMasyarakat::query()->where('assigned_to', $user->id);
+        /*
+         * Status penyelesaian tugas dihitung dari data penugasan staf, bukan
+         * dari status aspirasi, sehingga penyelesaian penugasan tidak
+         * otomatis menutup laporan masyarakat.
+         */
+        $penugasanBase = LaporanPenugasan::query()->where('user_id', $user->id);
 
-        $assignedTotal = (clone $assignedBase)->count();
-        $assignedDone = (clone $assignedBase)
-            ->where('status', LaporanMasyarakat::STATUS_SELESAI)
-            ->count();
-        $activeTotal = (clone $assignedBase)
-            ->whereIn('status', LaporanMasyarakat::ACTIVE_STATUSES)
-            ->count();
+        $penugasanStats = [
+            'total' => (clone $penugasanBase)->count(),
+            'baru' => (clone $penugasanBase)
+                ->whereNull('released_at')
+                ->where('status', LaporanPenugasan::STATUS_DITUGASKAN)
+                ->count(),
+            'sedang' => (clone $penugasanBase)
+                ->where('status', LaporanPenugasan::STATUS_SEDANG_DITINDAKLANJUTI)
+                ->count(),
+            'selesai' => (clone $penugasanBase)
+                ->where('status', LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI)
+                ->count(),
+        ];
 
-        $assignedReports = (clone $assignedBase)
-            ->with(['member', 'assignee'])
-            ->whereIn('status', LaporanMasyarakat::ACTIVE_STATUSES)
-            ->latest('tanggal_laporan')
+        $penugasanAktif = (clone $penugasanBase)
+            ->whereNull('released_at')
+            ->whereIn('status', LaporanPenugasan::ACTIVE_STATUSES)
+            ->with(['laporan.member'])
+            ->latest('assigned_at')
             ->latest('id')
             ->limit(9)
-            ->get()
-            ->map(static fn (LaporanMasyarakat $report) => PortalPresenter::report($report))
-            ->all();
+            ->get();
 
-        $rawCounts = (clone $assignedBase)
+        $riwayatPenugasan = (clone $penugasanBase)
+            ->where('status', LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI)
+            ->with(['laporan'])
+            ->latest('completed_at')
+            ->latest('id')
+            ->limit(6)
+            ->get();
+
+        $rawCounts = (clone $penugasanBase)
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
 
         $followUp = [
-            'Ditugaskan' => (int) ($rawCounts[LaporanMasyarakat::STATUS_DITUGASKAN] ?? 0),
-            'Diproses' => (int) ($rawCounts[LaporanMasyarakat::STATUS_DIPROSES] ?? 0),
-            'Selesai' => (int) ($rawCounts[LaporanMasyarakat::STATUS_SELESAI] ?? 0),
+            'Ditugaskan' => (int) ($rawCounts[LaporanPenugasan::STATUS_DITUGASKAN] ?? 0),
+            'Sedang Ditindaklanjuti' => (int) ($rawCounts[LaporanPenugasan::STATUS_SEDANG_DITINDAKLANJUTI] ?? 0),
+            'Selesai Ditindaklanjuti' => (int) ($rawCounts[LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI] ?? 0),
         ];
 
         $memberReportsDone = LaporanMasyarakat::query()
@@ -170,69 +212,56 @@ class DashboardController extends Controller
 
         $stats = [
             [
-                'label' => 'Arsip Anggota Binaan',
-                'value' => $assignment['arsip'],
-                'icon' => 'ri-archive-2-line',
+                'label' => 'Total Penugasan',
+                'value' => $penugasanStats['total'],
+                'icon' => 'ri-task-line',
                 'tint' => '#eef6f1',
                 'color' => '#155043',
-                'trend' => $member->nama_lengkap,
-                'trend_type' => 'ok',
-                'meta' => 'dokumen',
+                'trend' => $penugasanStats['selesai'].' selesai',
+                'trend_type' => $penugasanStats['selesai'] > 0 ? 'ok' : 'flat',
+                'meta' => 'penugasan',
             ],
             [
-                'label' => 'Laporan Ditugaskan',
-                'value' => $assignedTotal,
-                'icon' => 'ri-chat-3-line',
+                'label' => 'Penugasan Baru',
+                'value' => $penugasanStats['baru'],
+                'icon' => 'ri-inbox-unarchive-line',
+                'tint' => '#fbf3e2',
+                'color' => '#a9853f',
+                'trend' => $penugasanStats['baru'] > 0 ? 'Belum dimulai' : 'Tidak ada',
+                'trend_type' => $penugasanStats['baru'] > 0 ? 'warn' : 'ok',
+                'meta' => 'ditugaskan',
+            ],
+            [
+                'label' => 'Sedang Ditindaklanjuti',
+                'value' => $penugasanStats['sedang'],
+                'icon' => 'ri-loader-4-line',
                 'tint' => '#eaf2fb',
                 'color' => '#2c6aa0',
-                'trend' => $activeTotal.' aktif',
+                'trend' => $penugasanStats['sedang'] > 0 ? 'Sedang dikerjakan' : 'Tidak ada',
                 'trend_type' => 'flat',
-                'meta' => 'ditangani',
+                'meta' => 'proses',
             ],
             [
-                'label' => 'Laporan Selesai',
-                'value' => $assignedDone,
+                'label' => 'Selesai Ditindaklanjuti',
+                'value' => $penugasanStats['selesai'],
                 'icon' => 'ri-checkbox-circle-line',
                 'tint' => '#e7f5ee',
                 'color' => '#16794f',
-                'trend' => $assignedTotal > 0
-                    ? round(($assignedDone / $assignedTotal) * 100).'%'
+                'trend' => $penugasanStats['total'] > 0
+                    ? round(($penugasanStats['selesai'] / $penugasanStats['total']) * 100).'%'
                     : 'Belum ada',
-                'trend_type' => $assignedDone > 0 ? 'up' : 'flat',
+                'trend_type' => $penugasanStats['selesai'] > 0 ? 'up' : 'flat',
                 'meta' => 'tingkat selesai',
             ],
-            [
-                'label' => 'Tugas Aktif',
-                'value' => $activeTotal,
-                'icon' => 'ri-task-line',
-                'tint' => '#fcf2e1',
-                'color' => '#996414',
-                'trend' => $activeTotal > 0 ? 'Perlu tindak lanjut' : 'Tidak ada tugas',
-                'trend_type' => $activeTotal > 0 ? 'warn' : 'ok',
-                'meta' => 'laporan',
-            ],
         ];
-
-        $tasks = collect($assignedReports)
-            ->take(5)
-            ->map(static function (array $report) {
-                return [
-                    'judul' => 'Tindak lanjut: '.$report['ringkasan'],
-                    'keterangan' => 'Laporan · '.$report['tiket'],
-                    'jatuh_tempo' => $report['tanggal']
-                        ? PortalData::date($report['tanggal'])
-                        : 'Tanpa tenggat',
-                    'selesai' => false,
-                ];
-            })
-            ->all();
 
         return view('dashboard.staff', [
             'stats' => $stats,
             'assignment' => $assignment,
-            'tasks' => $tasks,
-            'assignedReports' => $assignedReports,
             'followUp' => $followUp,
+            'penugasanStats' => $penugasanStats,
+            'penugasanAktif' => $penugasanAktif,
+            'riwayatPenugasan' => $riwayatPenugasan,
         ]);
     }
 

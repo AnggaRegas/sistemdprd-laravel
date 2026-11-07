@@ -76,7 +76,7 @@ class ReportManagementTest extends TestCase
             ->assertDontSee('Anggota Lain Ujung');
     }
 
-    public function test_administrator_folder_shows_duplicate_badge_and_detail_shows_percentage_only(): void
+    public function test_administrator_folder_shows_duplicate_badge_and_detail_hides_similarity_card(): void
     {
         config()->set('aspiration_similarity.threshold', 0.80);
 
@@ -114,9 +114,10 @@ class ReportManagementTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Hasil Deteksi Kemiripan')
-            ->assertSee('Kemiripan 95,0%')
-            ->assertSee('Aspirasi terdahulu yang mirip');
+            ->assertSee('Laporan berpotensi duplikat')
+            ->assertDontSee('Hasil Deteksi Kemiripan')
+            ->assertDontSee('Kemiripan 95,0%')
+            ->assertDontSee('TF-IDF dan Cosine Similarity');
     }
 
     public function test_administrator_can_approve_report_and_auto_dispose_to_member_staff(): void
@@ -358,7 +359,9 @@ class ReportManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Anggota Menu Staf')
             ->assertDontSee('Anggota Menu Lain')
-            ->assertSee('Buka Folder');
+            ->assertDontSee('Buka Folder')
+            ->assertSee('Buka Arsip')
+            ->assertSee(route('anggota.show', $member), false);
 
         $this->actingAs($staff)
             ->get(route('anggota.show', $member))

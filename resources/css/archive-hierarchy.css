@@ -363,6 +363,27 @@ a.archive-step-link:hover {
     color: var(--dprd-muted-light);
 }
 
+.archive-card-linkable {
+    position: relative;
+}
+
+.archive-card-link {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+}
+
+.archive-card-link:focus-visible {
+    outline: 2px solid var(--dprd-gold-500);
+    outline-offset: 2px;
+}
+
+.archive-card-linkable .archive-card-actions {
+    position: relative;
+    z-index: 2;
+}
+
 .archive-card-actions {
     display: flex;
     flex-wrap: wrap;

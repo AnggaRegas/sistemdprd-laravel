@@ -89,10 +89,10 @@
             <div class="app-card h-100">
                 <div class="app-card-header">
                     <div>
-                        <h2 class="app-card-title">Laporan Ditugaskan kepada Saya</h2>
-                        <p class="app-card-subtitle">Laporan aktif yang membutuhkan tindak lanjut</p>
+                        <h2 class="app-card-title">Penugasan Aktif</h2>
+                        <p class="app-card-subtitle">Tugas dari Superadmin yang perlu ditindaklanjuti</p>
                     </div>
-                    <a href="{{ route('laporan.index', ['status' => 'Diproses']) }}" class="app-card-link">
+                    <a href="{{ route('penugasan.index') }}" class="app-card-link">
                         Lihat semua
                         <i class="ri-arrow-right-line" aria-hidden="true"></i>
                     </a>
@@ -102,26 +102,52 @@
                     <table class="table-modern">
                         <thead>
                             <tr>
-                                <th scope="col">Laporan</th>
-                                <th scope="col" class="d-none d-md-table-cell">Kategori</th>
-                                <th scope="col" class="d-none d-sm-table-cell">Tanggal</th>
+                                <th scope="col">Penugasan</th>
+                                <th scope="col" class="d-none d-md-table-cell">Anggota DPRD</th>
+                                <th scope="col" class="d-none d-sm-table-cell">Ditugaskan</th>
                                 <th scope="col">Status</th>
                                 <th scope="col" class="text-end">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse ($assignedReports as $report)
+                            @forelse ($penugasanAktif as $penugasan)
                                 <tr>
                                     <td>
-                                        <span class="cell-title" title="{{ $report['ringkasan'] }}">{{ $report['ringkasan'] }}</span>
-                                        <span class="cell-sub">{{ $report['tiket'] }} &middot; {{ $report['pelapor'] }}</span>
+                                        <span class="cell-title" title="{{ $penugasan->laporan?->ringkasan }}">
+                                            {{ $penugasan->laporan?->ringkasan ?? 'Laporan tidak tersedia' }}
+                                        </span>
+                                        <span class="cell-sub">{{ $penugasan->laporan?->nomor_tiket ?? '—' }}</span>
                                     </td>
-                                    <td class="d-none d-md-table-cell"><span class="cell-muted">{{ $report['kategori'] }}</span></td>
-                                    <td class="d-none d-sm-table-cell"><span class="cell-muted">{{ \App\Support\PortalData::date($report['tanggal']) }}</span></td>
-                                    <td><x-admin.status-badge :status="$report['status']" /></td>
+                                    <td class="d-none d-md-table-cell">
+                                        <span class="cell-muted">{{ $penugasan->laporan?->member?->nama_lengkap ?? '—' }}</span>
+                                    </td>
+                                    <td class="d-none d-sm-table-cell">
+                                        <span class="cell-muted">{{ \App\Support\PortalData::dateTime($penugasan->assigned_at) }}</span>
+                                    </td>
+                                    <td><x-admin.status-badge :status="$penugasan->status_label" /></td>
                                     <td>
                                         <div class="table-actions">
-                                            <a href="{{ route('laporan.index', ['q' => $report['tiket']]) }}" class="action-menu-btn" aria-label="Buka laporan {{ $report['tiket'] }}">
+                                            @if ($penugasan->status === \App\Models\LaporanPenugasan::STATUS_DITUGASKAN)
+                                                <form method="POST" action="{{ route('penugasan.mulai', $penugasan) }}" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-outline-soft btn-sm" title="Mulai tindak lanjut">
+                                                        <i class="ri-play-line" aria-hidden="true"></i>
+                                                    </button>
+                                                </form>
+                                            @endif
+
+                                            @if (! $penugasan->isSelesai())
+                                                <button type="button" class="btn btn-emerald btn-sm"
+                                                        data-complete-assignment
+                                                        data-complete-action="{{ route('penugasan.selesai', $penugasan) }}"
+                                                        data-complete-id="{{ $penugasan->id }}"
+                                                        data-complete-title="{{ $penugasan->laporan?->ringkasan ?? 'Penugasan' }}">
+                                                    <i class="ri-check-double-line" aria-hidden="true"></i>
+                                                    Tandai Selesai
+                                                </button>
+                                            @endif
+
+                                            <a href="{{ route('penugasan.show', $penugasan) }}" class="action-menu-btn" aria-label="Buka penugasan {{ $penugasan->laporan?->nomor_tiket }}">
                                                 <i class="ri-arrow-right-up-line" aria-hidden="true"></i>
                                             </a>
                                         </div>
@@ -132,8 +158,8 @@
                                     <td colspan="5" class="table-empty">
                                         <x-admin.empty-state
                                             icon="ri-checkbox-circle-line"
-                                            title="Tidak ada laporan aktif"
-                                            description="Semua laporan yang ditugaskan kepada Anda sudah selesai."
+                                            title="Tidak ada penugasan aktif"
+                                            description="Semua penugasan yang diberikan kepada Anda sudah selesai ditindaklanjuti."
                                         />
                                     </td>
                                 </tr>
@@ -157,8 +183,8 @@
                     @php
                         $followUpTotal = array_sum($followUp);
                         $followUpColors = [
-                            'Selesai' => '#16794f',
-                            'Diproses' => '#2c6aa0',
+                            'Selesai Ditindaklanjuti' => '#16794f',
+                            'Sedang Ditindaklanjuti' => '#2c6aa0',
                             'Ditugaskan' => '#c9a45c',
                         ];
                     @endphp
@@ -173,7 +199,7 @@
                                 <div class="progress-bar" role="progressbar"
                                      style="width: {{ round(($count / max($followUpTotal, 1)) * 100) }}%; background: {{ $followUpColors[$status] ?? '#93a09a' }};"
                                      aria-valuenow="{{ $count }}" aria-valuemin="0" aria-valuemax="{{ $followUpTotal }}"
-                                     aria-label="{{ $status }}: {{ $count }} laporan"></div>
+                                     aria-label="{{ $status }}: {{ $count }} penugasan"></div>
                             </div>
                         </div>
                     @endforeach
@@ -194,6 +220,14 @@
 
                 <div class="app-card-body">
                     <div class="quick-grid">
+                        <a href="{{ route('penugasan.index') }}" class="quick-action">
+                            <span class="quick-action-icon"><i class="ri-task-line" aria-hidden="true"></i></span>
+                            <span>
+                                <strong>Semua Penugasan</strong>
+                                <span>Status &amp; riwayat tugas</span>
+                            </span>
+                        </a>
+
                         <a href="{{ route('anggota.index') }}" class="quick-action">
                             <span class="quick-action-icon"><i class="ri-team-line" aria-hidden="true"></i></span>
                             <span>
@@ -217,100 +251,73 @@
                                 <span>Dokumen anggota binaan</span>
                             </span>
                         </a>
-
-                        <a href="{{ route('laporan.index', ['status' => 'Diproses']) }}" class="quick-action">
-                            <span class="quick-action-icon"><i class="ri-chat-check-line" aria-hidden="true"></i></span>
-                            <span>
-                                <strong>Laporan Aktif</strong>
-                                <span>Pantau tindak lanjut</span>
-                            </span>
-                        </a>
-
-                        <button type="button" class="quick-action" data-demo-toast="Rekap tugas belum tersedia pada tahap UI. Fitur ini akan dihubungkan pada tahap backend.">
-                            <span class="quick-action-icon"><i class="ri-file-list-3-line" aria-hidden="true"></i></span>
-                            <span>
-                                <strong>Rekap Tugas</strong>
-                                <span>Ringkasan mingguan</span>
-                            </span>
-                        </button>
-
-                        <button type="button" class="quick-action" data-demo-toast="Kanal komunikasi internal belum tersedia pada tahap UI.">
-                            <span class="quick-action-icon"><i class="ri-customer-service-2-line" aria-hidden="true"></i></span>
-                            <span>
-                                <strong>Hubungi Admin</strong>
-                                <span>Konsultasi penugasan</span>
-                            </span>
-                        </button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="app-card">
+    <div class="app-card mb-3">
         <div class="app-card-header">
             <div>
-                <h2 class="app-card-title">Pekerjaan Terbaru</h2>
-                <p class="app-card-subtitle">Tugas yang perlu diselesaikan &middot; centang hanya mengubah tampilan</p>
+                <h2 class="app-card-title">Riwayat Penugasan Selesai</h2>
+                <p class="app-card-subtitle">Penugasan yang sudah Anda tandai selesai ditindaklanjuti</p>
             </div>
+            <a href="{{ route('penugasan.index', ['status' => \App\Models\LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI]) }}" class="app-card-link">
+                Lihat semua
+                <i class="ri-arrow-right-line" aria-hidden="true"></i>
+            </a>
         </div>
 
-        <div class="app-card-body">
-            @if (empty($tasks))
-                <x-admin.empty-state
-                    icon="ri-task-line"
-                    title="Belum ada tugas aktif"
-                    description="Laporan yang ditugaskan kepada Anda akan muncul di sini."
-                />
-            @else
-            <div class="row g-4">
-                <div class="col-md-6">
-                    <div class="task-list">
-                        @foreach (array_slice($tasks, 0, 3) as $task)
-                            <div class="task-item {{ $task['selesai'] ? 'is-done' : '' }}">
-                                <button type="button" class="task-check {{ $task['selesai'] ? 'is-done' : '' }}"
-                                        data-task-toggle aria-pressed="{{ $task['selesai'] ? 'true' : 'false' }}"
-                                        aria-label="Tandai {{ $task['judul'] }}">
-                                    <i class="ri-check-line" aria-hidden="true"></i>
-                                </button>
-                                <div class="task-item-body">
-                                    <strong>{{ $task['judul'] }}</strong>
-                                    <p>{{ $task['keterangan'] }}</p>
+        <div class="table-responsive">
+            <table class="table-modern">
+                <thead>
+                    <tr>
+                        <th scope="col">Penugasan</th>
+                        <th scope="col" class="d-none d-md-table-cell">Hasil Tindak Lanjut</th>
+                        <th scope="col" class="d-none d-sm-table-cell">Tanggal Selesai</th>
+                        <th scope="col" class="text-end">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($riwayatPenugasan as $penugasan)
+                        <tr>
+                            <td>
+                                <span class="cell-title">{{ $penugasan->laporan?->ringkasan ?? '—' }}</span>
+                                <span class="cell-sub">{{ $penugasan->laporan?->nomor_tiket ?? '—' }}</span>
+                            </td>
+                            <td class="d-none d-md-table-cell">
+                                <span class="cell-muted">{{ \Illuminate\Support\Str::limit($penugasan->hasil_tindak_lanjut, 90) }}</span>
+                            </td>
+                            <td class="d-none d-sm-table-cell">
+                                <span class="cell-muted">{{ \App\Support\PortalData::dateTime($penugasan->completed_at) }}</span>
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <a href="{{ route('penugasan.show', $penugasan) }}" class="btn btn-outline-soft btn-sm">
+                                        <i class="ri-eye-line" aria-hidden="true"></i>
+                                        Detail
+                                    </a>
                                 </div>
-                                <span class="task-due">
-                                    <i class="ri-time-line" aria-hidden="true"></i>
-                                    {{ $task['jatuh_tempo'] }}
-                                </span>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-
-                <div class="col-md-6">
-                    <div class="task-list">
-                        @foreach (array_slice($tasks, 3) as $task)
-                            <div class="task-item {{ $task['selesai'] ? 'is-done' : '' }}">
-                                <button type="button" class="task-check {{ $task['selesai'] ? 'is-done' : '' }}"
-                                        data-task-toggle aria-pressed="{{ $task['selesai'] ? 'true' : 'false' }}"
-                                        aria-label="Tandai {{ $task['judul'] }}">
-                                    <i class="ri-check-line" aria-hidden="true"></i>
-                                </button>
-                                <div class="task-item-body">
-                                    <strong>{{ $task['judul'] }}</strong>
-                                    <p>{{ $task['keterangan'] }}</p>
-                                </div>
-                                <span class="task-due">
-                                    <i class="ri-time-line" aria-hidden="true"></i>
-                                    {{ $task['jatuh_tempo'] }}
-                                </span>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-            @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="table-empty">
+                                <x-admin.empty-state
+                                    icon="ri-history-line"
+                                    title="Belum ada riwayat"
+                                    description="Penugasan yang selesai akan tercatat di sini."
+                                />
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
+
+    @include('penugasan._complete-modal')
 @endsection
 
 @push('styles')

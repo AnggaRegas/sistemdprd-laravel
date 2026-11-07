@@ -140,6 +140,14 @@
                                 <span>Data &amp; staf pendamping</span>
                             </span>
                         </a>
+
+                        <a href="{{ route('penugasan.index') }}" class="quick-action">
+                            <span class="quick-action-icon"><i class="ri-task-line" aria-hidden="true"></i></span>
+                            <span>
+                                <strong>Monitoring Penugasan</strong>
+                                <span>Status &amp; hasil tindak lanjut</span>
+                            </span>
+                        </a>
                     </div>
                 </div>
 
@@ -257,6 +265,127 @@
                     </a>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="app-card mb-3">
+        <div class="app-card-header">
+            <div>
+                <h2 class="app-card-title">Monitoring Penugasan Staff Pendamping</h2>
+                <p class="app-card-subtitle">Status penyelesaian tindak lanjut tugas yang diberikan Superadmin</p>
+            </div>
+            <a href="{{ route('penugasan.index') }}" class="app-card-link">
+                Buka monitoring
+                <i class="ri-arrow-right-line" aria-hidden="true"></i>
+            </a>
+        </div>
+
+        <div class="app-card-body-tight">
+            <div class="row g-3">
+                <div class="col-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #eef6f1; color: #155043;">
+                            <i class="ri-task-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>{{ number_format($assignmentStats['total'], 0, ',', '.') }}</strong>
+                            <span>Total penugasan</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #fbf3e2; color: #a9853f;">
+                            <i class="ri-inbox-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>{{ number_format($assignmentStats['ditugaskan'], 0, ',', '.') }}</strong>
+                            <span>Ditugaskan</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #eaf2fb; color: #2c6aa0;">
+                            <i class="ri-loader-4-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>{{ number_format($assignmentStats['sedang'], 0, ',', '.') }}</strong>
+                            <span>Sedang ditindaklanjuti</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #e7f5ee; color: #16794f;">
+                            <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>{{ number_format($assignmentStats['selesai'], 0, ',', '.') }}</strong>
+                            <span>Selesai ditindaklanjuti</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table-modern">
+                <thead>
+                    <tr>
+                        <th scope="col">Judul Aspirasi</th>
+                        <th scope="col" class="d-none d-md-table-cell">Staff Pendamping</th>
+                        <th scope="col" class="d-none d-lg-table-cell">Anggota DPRD</th>
+                        <th scope="col" class="d-none d-sm-table-cell">Tanggal Penugasan</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="d-none d-md-table-cell">Tanggal Selesai</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($latestPenugasan as $penugasan)
+                        <tr>
+                            <td>
+                                <span class="cell-title" title="{{ $penugasan->laporan?->ringkasan }}">
+                                    {{ $penugasan->laporan?->ringkasan ?? 'Laporan tidak tersedia' }}
+                                </span>
+                                <span class="cell-sub">{{ $penugasan->laporan?->nomor_tiket ?? '—' }}</span>
+                            </td>
+                            <td class="d-none d-md-table-cell">
+                                <span class="cell-muted">{{ $penugasan->user?->name ?? 'Staf Pendamping' }}</span>
+                            </td>
+                            <td class="d-none d-lg-table-cell">
+                                <span class="cell-muted">{{ $penugasan->laporan?->member?->nama_lengkap ?? '—' }}</span>
+                            </td>
+                            <td class="d-none d-sm-table-cell">
+                                <span class="cell-muted">{{ \App\Support\PortalData::dateTime($penugasan->assigned_at) }}</span>
+                            </td>
+                            <td>
+                                <x-admin.status-badge :status="$penugasan->status_label" />
+                            </td>
+                            <td class="d-none d-md-table-cell">
+                                <span class="cell-muted">
+                                    @if ($penugasan->completed_at)
+                                        {{ \App\Support\PortalData::dateTime($penugasan->completed_at) }}
+                                        <span class="cell-sub d-block">{{ $penugasan->completedBy?->name ?? $penugasan->user?->name }}</span>
+                                    @else
+                                        —
+                                    @endif
+                                </span>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="table-empty">
+                                <x-admin.empty-state
+                                    icon="ri-task-line"
+                                    title="Belum ada penugasan"
+                                    description="Penugasan kepada staf pendamping yang dibuat melalui laporan masyarakat akan muncul di sini."
+                                />
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
 @endsection

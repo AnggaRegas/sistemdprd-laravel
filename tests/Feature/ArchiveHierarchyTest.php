@@ -165,7 +165,8 @@ class ArchiveHierarchyTest extends TestCase
             ->assertOk()
             ->assertSee('Folder Dokumen')
             ->assertSee('Reses Kelurahan A')
-            ->assertSee('Buka Folder')
+            ->assertDontSee('Buka Folder')
+            ->assertSee('archive-card-link', false)
             ->assertSee('1 berkas')
             ->assertSee(route('anggota.arsip.dokumen', [$member, $category, $year, $folder]), false)
             ->assertSee(route('anggota.arsip.tahun', [$member, $category]), false);

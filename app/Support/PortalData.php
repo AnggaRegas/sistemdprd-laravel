@@ -64,11 +64,11 @@ class PortalData
     public static function toneForStatus(string $status): string
     {
         return match ($status) {
-            'Terverifikasi', 'Selesai', 'Aktif' => 'success',
+            'Terverifikasi', 'Selesai', 'Aktif', 'Selesai Ditindaklanjuti' => 'success',
             'Menunggu Verifikasi', 'Menunggu Penugasan' => 'warning',
             'Ditolak' => 'danger',
             'Ditugaskan' => 'gold',
-            'Baru', 'Diproses' => 'info',
+            'Baru', 'Diproses', 'Sedang Ditindaklanjuti' => 'info',
             default => 'neutral',
         };
     }

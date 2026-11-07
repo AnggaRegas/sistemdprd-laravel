@@ -146,6 +146,110 @@
                 </div>
             </div>
 
+            @php
+                $activeAssignment = $report->penugasans
+                    ->first(static fn ($assignment) => $assignment->released_at === null);
+            @endphp
+
+            @if ($activeAssignment)
+                <div class="app-card mb-3">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Penugasan Tindak Lanjut</h2>
+                            <p class="app-card-subtitle">Status penyelesaian tugas staf pendamping untuk aspirasi ini.</p>
+                        </div>
+                        <x-admin.status-badge :status="$activeAssignment->status_label" />
+                    </div>
+
+                    <div class="app-card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <dl class="detail-list">
+                                    <div class="detail-row">
+                                        <dt>Staff pendamping</dt>
+                                        <dd>{{ $activeAssignment->user?->name ?? '—' }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                            <div class="col-md-4">
+                                <dl class="detail-list">
+                                    <div class="detail-row">
+                                        <dt>Tanggal penugasan</dt>
+                                        <dd>{{ \App\Support\PortalData::dateTime($activeAssignment->assigned_at) }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                            <div class="col-md-4">
+                                <dl class="detail-list">
+                                    <div class="detail-row">
+                                        <dt>Tanggal selesai</dt>
+                                        <dd>
+                                            @if ($activeAssignment->completed_at)
+                                                {{ \App\Support\PortalData::dateTime($activeAssignment->completed_at) }}
+                                                <span class="cell-sub d-block">{{ $activeAssignment->completedBy?->name ?? $activeAssignment->user?->name }}</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        @if ($activeAssignment->isSelesai())
+                            <div class="soft-divider"></div>
+                            <h3 class="app-card-title mb-2">Hasil Tindak Lanjut</h3>
+                            <p style="font-size: 11.5px; line-height: 1.8;">{!! nl2br(e($activeAssignment->hasil_tindak_lanjut ?: '—')) !!}</p>
+
+                            @if ($activeAssignment->keterangan_tambahan)
+                                <h3 class="app-card-title mb-2">Keterangan Tambahan</h3>
+                                <p style="font-size: 11.5px; line-height: 1.8;">{!! nl2br(e($activeAssignment->keterangan_tambahan)) !!}</p>
+                            @endif
+
+                            @if ($activeAssignment->hasBukti())
+                                <a href="{{ route('penugasan.bukti', $activeAssignment) }}" class="app-card-link">
+                                    <i class="ri-download-2-line" aria-hidden="true"></i>
+                                    {{ $activeAssignment->bukti_nama ?: 'Unduh bukti tindak lanjut' }}
+                                    <span class="cell-sub ms-1">{{ $activeAssignment->bukti_size_label }}</span>
+                                </a>
+                            @else
+                                <p class="cell-muted mb-0">Tidak ada dokumen pendukung yang dilampirkan.</p>
+                            @endif
+                        @endif
+
+                        <div class="soft-divider"></div>
+
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a href="{{ route('penugasan.show', $activeAssignment) }}" class="btn btn-outline-soft btn-sm">
+                                <i class="ri-eye-line" aria-hidden="true"></i>
+                                Detail Penugasan
+                            </a>
+
+                            @if ($isStaff && (int) $activeAssignment->user_id === (int) auth()->id() && ! $activeAssignment->isSelesai())
+                                @if ($activeAssignment->status === \App\Models\LaporanPenugasan::STATUS_DITUGASKAN)
+                                    <form method="POST" action="{{ route('penugasan.mulai', $activeAssignment) }}">
+                                        @csrf
+                                        <button type="submit" class="btn btn-outline-soft btn-sm">
+                                            <i class="ri-play-line" aria-hidden="true"></i>
+                                            Mulai Tindak Lanjut
+                                        </button>
+                                    </form>
+                                @endif
+
+                                <button type="button" class="btn btn-emerald btn-sm"
+                                        data-complete-assignment
+                                        data-complete-action="{{ route('penugasan.selesai', $activeAssignment) }}"
+                                        data-complete-id="{{ $activeAssignment->id }}"
+                                        data-complete-title="{{ $report->ringkasan }}">
+                                    <i class="ri-check-double-line" aria-hidden="true"></i>
+                                    Tandai Selesai
+                                </button>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="app-card mb-3">
                 <div class="app-card-header">
                     <div>
@@ -153,7 +257,6 @@
                         <p class="app-card-subtitle">Berkas pendukung disimpan secara privat, hanya dapat dibuka dari halaman ini.</p>
                     </div>
                 </div>
-
                 <div class="app-card-body">
                     @if ($report->hasLampiran())
                         <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
@@ -188,52 +291,6 @@
                     @endif
                 </div>
             </div>
-
-            @if ($isAdministrator)
-                <div class="app-card mb-3">
-                    <div class="app-card-header">
-                        <div>
-                            <h2 class="app-card-title">Hasil Deteksi Kemiripan</h2>
-                            <p class="app-card-subtitle">
-                                TF-IDF dan Cosine Similarity terhadap aspirasi sebelumnya dari anggota DPRD yang sama.
-                                Ambang {{ number_format(config('aspiration_similarity.threshold', 0.80) * 100, 0, ',', '.') }}%.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="app-card-body">
-                        @if ($similarities->isEmpty())
-                            <p class="mb-0 text-muted" style="font-size: 11px;">
-                                Tidak ditemukan aspirasi terdahulu yang kemiripannya mencapai ambang. Keputusan akhir tetap berada pada administrator.
-                            </p>
-                        @else
-                            <div class="d-flex flex-column gap-2">
-                                @foreach ($similarities as $similarity)
-                                    <div class="d-flex align-items-center justify-content-between gap-3 rounded-3 border p-3 sim-row">
-                                        <div class="min-w-0">
-                                            <a href="{{ route('laporan.show', ['laporan' => $similarity->comparedLaporan, 'return_to' => $returnUrl]) }}"
-                                               class="d-block text-truncate fw-bold"
-                                               style="font-size: 12.5px; color: #193b32;">
-                                                {{ $similarity->comparedLaporan?->nomor_tiket }} — {{ $similarity->comparedLaporan?->ringkasan }}
-                                            </a>
-                                            <span class="cell-muted" style="font-size: 10px;">
-                                                {{ $similarity->comparedLaporan?->pelapor_nama }} ·
-                                                {{ \App\Support\PortalData::date($similarity->comparedLaporan?->tanggal_laporan?->toDateString()) }}
-                                            </span>
-                                        </div>
-                                        <span class="status-badge {{ $similarity->similarity_score >= 0.95 ? 'status-danger' : 'status-warning' }} flex-shrink-0">
-                                            Kemiripan {{ number_format($similarity->similarity_score * 100, 1, ',', '.') }}%
-                                        </span>
-                                    </div>
-                                @endforeach
-                            </div>
-                            <p class="mb-0 mt-3 text-muted" style="font-size: 11px;">
-                                Indikasi ini bukan keputusan otomatis. Periksa kedua aspirasi lalu tentukan sendiri apakah keduanya duplikat atau berbeda.
-                            </p>
-                        @endif
-                    </div>
-                </div>
-            @endif
 
             <div class="app-card">
                 <div class="app-card-header">
@@ -408,6 +465,26 @@
                         </form>
                     </div>
                 </div>
+
+                <div class="app-card mt-3" id="analisis">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Analisis Kemiripan</h2>
+                            <p class="app-card-subtitle">Riwayat deteksi duplikasi aspirasi ini.</p>
+                        </div>
+                    </div>
+
+                    <div class="app-card-body">
+                        <p class="cell-muted" style="font-size: 11px; line-height: 1.8;">
+                            Rincian perhitungan TF-IDF dan cosine similarity disimpan saat aspirasi masuk dan tidak dihitung ulang.
+                        </p>
+
+                        <a href="{{ route('laporan.analisis', $report) }}" class="btn btn-outline-soft w-100">
+                            <i class="ri-pulse-line" aria-hidden="true"></i>
+                            Lihat Rincian Analisis
+                        </a>
+                    </div>
+                </div>
             @elseif ($isStaff)
                 <div class="app-card" id="status">
                     <div class="app-card-header">
@@ -470,12 +547,14 @@
             @endif
         </div>
     </div>
+
+    @if ($isStaff && $activeAssignment && (int) $activeAssignment->user_id === (int) auth()->id() && ! $activeAssignment->isSelesai())
+        @include('penugasan._complete-modal')
+    @endif
 @endsection
 
 @push('styles')
     <style>
-        .sim-row { border-color: #e5e9e6; background: #fbfcfa; }
-        .sim-row:hover { border-color: #b9cdc3; }
         .report-quote { font-size: 12.5px !important; }
     </style>
 @endpush

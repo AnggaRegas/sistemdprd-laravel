@@ -23,6 +23,20 @@ class PortalAccessTest extends TestCase
             ->assertSee('Dashboard Administrator');
     }
 
+    public function test_duplication_analysis_page_is_removed_from_frontend(): void
+    {
+        $admin = User::factory()->administrator()->create();
+
+        $this->actingAs($admin)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertDontSee('Analisis Deteksi Duplikasi');
+
+        $this->actingAs($admin)
+            ->get('/analisis-duplikasi')
+            ->assertNotFound();
+    }
+
     public function test_staff_cannot_access_administrator_dashboard(): void
     {
         $staff = User::factory()->staff()->create();
@@ -190,7 +204,7 @@ class PortalAccessTest extends TestCase
         $this->actingAs($staff)
             ->get('/dashboard/staf')
             ->assertOk()
-            ->assertSee('Tidak ada laporan aktif')
-            ->assertSee('Belum ada tugas aktif');
+            ->assertSee('Tidak ada penugasan aktif')
+            ->assertSee('Belum ada riwayat');
     }
 }

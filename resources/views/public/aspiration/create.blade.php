@@ -275,10 +275,11 @@
                                     'border-[#d9cfbb]' => ! $errors->has('lampiran'),
                                 ])
                             >
-                            <p id="lampiran_help" class="mt-1.5 text-[11px] leading-5 text-[#8a948f]">PDF, JPG, JPEG, PNG, WEBP, DOC, atau DOCX. Ukuran maksimal 5 MB. Berkas disimpan secara privat.</p>
+                            <p id="lampiran_help" class="mt-1.5 text-[11px] leading-5 text-[#8a948f]">PDF, JPG, JPEG, PNG, WEBP, DOC, atau DOCX. Ukuran maksimal file 20 MB. Berkas disimpan secara privat.</p>
                             @error('lampiran')
                                 <p id="lampiran_error" class="mt-1.5 text-[11px] font-semibold leading-5 text-red-600">{{ $message }}</p>
                             @enderror
+                            <p id="lampiran_client_error" class="mt-1.5 text-[11px] font-semibold leading-5 text-red-600" hidden></p>
                         </div>
                     </div>
 
@@ -372,6 +373,45 @@
             const regionSelect = document.getElementById('dprd_region_id');
             const memberSelect = document.getElementById('dprd_member_id');
             const memberEmpty = document.querySelector('[data-member-empty]');
+            const lampiranInput = document.getElementById('lampiran');
+            const lampiranClientError = document.getElementById('lampiran_client_error');
+            const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'];
+            const maxFileSize = 20 * 1024 * 1024;
+
+            function setLampiranError(message) {
+                lampiranInput.setCustomValidity(message);
+
+                if (lampiranClientError) {
+                    lampiranClientError.textContent = message;
+                    lampiranClientError.hidden = message === '';
+                }
+            }
+
+            if (lampiranInput) {
+                lampiranInput.addEventListener('change', function () {
+                    setLampiranError('');
+
+                    const file = lampiranInput.files && lampiranInput.files[0];
+
+                    if (!file) {
+                        return;
+                    }
+
+                    if (file.size > maxFileSize) {
+                        setLampiranError('Ukuran file terlalu besar. Maksimal ukuran lampiran adalah 20 MB.');
+                        lampiranInput.reportValidity();
+
+                        return;
+                    }
+
+                    const extension = file.name.split('.').pop().toLowerCase();
+
+                    if (!allowedExtensions.includes(extension)) {
+                        setLampiranError('Format file tidak didukung. Silakan gunakan format file yang diperbolehkan.');
+                        lampiranInput.reportValidity();
+                    }
+                });
+            }
 
             function setMemberPlaceholder(text) {
                 if (!memberSelect) {

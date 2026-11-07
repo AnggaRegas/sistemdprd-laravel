@@ -83,7 +83,9 @@ class MemberManagementTest extends TestCase
             ->assertSee('DWN-01')
             ->assertSee('Ir. H. KAHARUDDIN KADIR, M.Si')
             ->assertSee('Buka Arsip')
+            ->assertDontSee('Buka Folder')
             ->assertSee(route('anggota.arsip', $firstMember), false)
+            ->assertSee(route('anggota.show', $firstMember), false)
             ->assertSee('Belum ditugaskan');
     }
 
