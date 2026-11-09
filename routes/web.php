@@ -7,6 +7,8 @@ use App\Http\Controllers\Portal\ArchiveController;
 use App\Http\Controllers\Portal\ArchiveDocumentController;
 use App\Http\Controllers\Portal\CommissionController;
 use App\Http\Controllers\Portal\DashboardController;
+use App\Http\Controllers\Portal\KamusAcuanController;
+use App\Http\Controllers\Portal\KamusPemeriksaanController;
 use App\Http\Controllers\Portal\LandingAgendaController;
 use App\Http\Controllers\Portal\LandingGalleryController;
 use App\Http\Controllers\Portal\LandingNewsController;
@@ -132,6 +134,72 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
     Route::middleware('role:staf_pendamping')->group(function () {
         Route::get('/dashboard/staf', [DashboardController::class, 'staff'])->name('dashboard.staf');
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kamus Acuan (khusus administrator / Super Admin)
+    |--------------------------------------------------------------------------
+    | Kamus memiliki versi tahunan dan riwayat sendiri. Hasil pemeriksaan
+    | otomatis serta keputusan manual disimpan terpisah agar perubahan kamus
+    | tidak mengubah riwayat laporan lama.
+    */
+    Route::middleware(['role:administrator', 'can:manage-kamus-acuan'])
+        ->prefix('kamus-acuan')
+        ->name('kamus.')
+        ->group(function () {
+            Route::get('/', [KamusAcuanController::class, 'index'])->name('index');
+
+            Route::get('/versi/create', [KamusAcuanController::class, 'createVersion'])->name('versi.create');
+            Route::post('/versi', [KamusAcuanController::class, 'storeVersion'])->name('versi.store');
+            Route::get('/versi/{version}/edit', [KamusAcuanController::class, 'editVersion'])
+                ->whereNumber('version')
+                ->name('versi.edit');
+            Route::put('/versi/{version}', [KamusAcuanController::class, 'updateVersion'])
+                ->whereNumber('version')
+                ->name('versi.update');
+            Route::patch('/versi/{version}/aktifkan', [KamusAcuanController::class, 'activateVersion'])
+                ->whereNumber('version')
+                ->name('versi.aktifkan');
+
+            Route::get('/versi/{version}/entri/create', [KamusAcuanController::class, 'createEntry'])
+                ->whereNumber('version')
+                ->name('entri.create');
+            Route::post('/versi/{version}/entri', [KamusAcuanController::class, 'storeEntry'])
+                ->whereNumber('version')
+                ->name('entri.store');
+            Route::get('/entri/{entry}/edit', [KamusAcuanController::class, 'editEntry'])
+                ->whereNumber('entry')
+                ->name('entri.edit');
+            Route::put('/entri/{entry}', [KamusAcuanController::class, 'updateEntry'])
+                ->whereNumber('entry')
+                ->name('entri.update');
+            Route::patch('/entri/{entry}/status', [KamusAcuanController::class, 'toggleEntry'])
+                ->whereNumber('entry')
+                ->name('entri.status');
+            Route::delete('/entri/{entry}', [KamusAcuanController::class, 'destroyEntry'])
+                ->whereNumber('entry')
+                ->name('entri.destroy');
+
+            Route::get('/versi/{version}/impor', [KamusAcuanController::class, 'importForm'])
+                ->whereNumber('version')
+                ->name('versi.impor');
+            Route::post('/versi/{version}/impor', [KamusAcuanController::class, 'import'])
+                ->whereNumber('version')
+                ->name('versi.impor.store');
+            Route::get('/versi/{version}/ekspor', [KamusAcuanController::class, 'export'])
+                ->whereNumber('version')
+                ->name('versi.ekspor');
+            Route::get('/templat', [KamusAcuanController::class, 'template'])->name('templat');
+
+            Route::get('/riwayat', [KamusAcuanController::class, 'riwayat'])->name('riwayat');
+
+            Route::post('/laporan/{laporan}/periksa', [KamusPemeriksaanController::class, 'periksa'])
+                ->whereNumber('laporan')
+                ->name('laporan.periksa');
+            Route::post('/laporan/{laporan}/verifikasi', [KamusPemeriksaanController::class, 'verifikasi'])
+                ->whereNumber('laporan')
+                ->name('laporan.verifikasi');
+        });
 
     Route::middleware(['role:administrator', 'can:manage-rdp-archives'])->group(function () {
         /*

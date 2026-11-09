@@ -6,6 +6,7 @@ use App\Models\DprdCommission;
 use App\Models\RdpDocument;
 use App\Models\RdpMeeting;
 use App\Models\User;
+use App\Support\ArchiveFileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -86,7 +87,7 @@ class RdpDocumentTest extends TestCase
         $commission = DprdCommission::factory()->create();
         $meeting = RdpMeeting::factory()->forCommission($commission)->create();
 
-        $file = UploadedFile::fake()->create('dokumen-besar.pdf', 10241, 'application/pdf');
+        $file = UploadedFile::fake()->create('dokumen-besar.pdf', ArchiveFileStorage::maxUploadKilobytes() + 1, 'application/pdf');
 
         $this->actingAs($admin)
             ->post(route('komisi.rdp.documents.store', [$commission, $meeting]), $this->documentPayload([

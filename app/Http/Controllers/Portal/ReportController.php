@@ -10,6 +10,9 @@ use App\Models\DprdMember;
 use App\Models\LaporanMasyarakat;
 use App\Models\LaporanPenugasan;
 use App\Models\LaporanSimilarityResult;
+use App\Models\KamusAcuanVersi;
+use App\Models\LaporanKamusHasil;
+use App\Models\LaporanKamusVerifikasi;
 use App\Models\User;
 use App\Support\PortalPresenter;
 use App\Support\SafeReturnUrl;
@@ -133,6 +136,8 @@ class ReportController extends Controller
 
         $filters = [
             'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
+            'kamus_status' => $this->kamusStatusFilter($request->query('kamus_status')),
+            'kamus_tahun' => $this->kamusTahunFilter($request->query('kamus_tahun')),
         ];
 
         $membersQuery = DprdMember::query()
@@ -160,7 +165,7 @@ class ReportController extends Controller
 
             $query = $selectedMember->laporan()
                 ->withTrashed()
-                ->with(['member']);
+                ->with(['member', 'kamusEntri']);
 
             if ($filters['q'] !== '') {
                 $needle = '%'.Str::lower($filters['q']).'%';
@@ -170,6 +175,21 @@ class ReportController extends Controller
                         ->orWhereRaw('LOWER(pelapor_nama) LIKE ?', [$needle])
                         ->orWhereRaw('LOWER(ringkasan) LIKE ?', [$needle]);
                 });
+            }
+
+            if ($filters['kamus_status'] !== '') {
+                if ($filters['kamus_status'] === LaporanKamusHasil::STATUS_BELUM_DIPERIKSA) {
+                    $query->where(function ($query) {
+                        $query->whereNull('kamus_status')
+                            ->orWhere('kamus_status', LaporanKamusHasil::STATUS_BELUM_DIPERIKSA);
+                    });
+                } else {
+                    $query->where('kamus_status', $filters['kamus_status']);
+                }
+            }
+
+            if ($filters['kamus_tahun'] !== '') {
+                $query->where('kamus_tahun', (int) $filters['kamus_tahun']);
             }
 
             $filteredTotal = (clone $query)->count();
@@ -194,7 +214,14 @@ class ReportController extends Controller
             'filteredTotal' => $filteredTotal,
             'duplicateIds' => $duplicateIds,
             'searchQuery' => $filters['q'],
-            'hasFolderQuery' => $selectedMemberId > 0 || $filters['q'] !== '',
+            'filters' => $filters,
+            'kamusStatuses' => LaporanKamusHasil::STATUS_LABELS,
+            'kamusTahunOptions' => $this->kamusTahunOptions(),
+            'hasKamusFilter' => $filters['kamus_status'] !== '' || $filters['kamus_tahun'] !== '',
+            'hasFolderQuery' => $selectedMemberId > 0
+                || $filters['q'] !== ''
+                || $filters['kamus_status'] !== ''
+                || $filters['kamus_tahun'] !== '',
             'returnUrl' => $returnUrl,
         ]);
     }
@@ -209,6 +236,20 @@ class ReportController extends Controller
                 'member',
                 'assignee',
                 'approvedBy',
+                'kamusHasil.versi',
+                'kamusHasil.entriUtama',
+                'kamusHasil.pemeriksa',
+                'kamusEntri',
+                'kamusVersi',
+                'kamusDiverifikasiOleh',
+                'kamusHasilList' => fn ($query) => $query
+                    ->with(['versi', 'entriUtama', 'pemeriksa'])
+                    ->latest('id')
+                    ->limit(10),
+                'kamusVerifikasi' => fn ($query) => $query
+                    ->with(['verifikator', 'entri', 'hasil'])
+                    ->latest('id')
+                    ->limit(20),
                 'penugasans' => fn ($query) => $query
                     ->with(['user', 'assignedBy'])
                     ->latest('assigned_at')
@@ -219,6 +260,19 @@ class ReportController extends Controller
         $isAdministrator = $user->isAdministrator();
         $autoStaff = null;
         $statusOptions = [];
+        $kamusVersion = KamusAcuanVersi::aktif();
+        $kamusEntries = $kamusVersion
+            ? $kamusVersion->entri()->active()->orderBy('kode')->get(['id', 'kode', 'klasifikasi', 'kamus_acuan_versi_id'])
+            : collect();
+
+        /*
+         * Keputusan manual lama bisa menunjuk entri dari versi sebelumnya.
+         * Sertakan entri tersebut agar pilihan yang tersimpan tidak hilang
+         * ketika versi aktif berganti.
+         */
+        if ($report->kamusEntri && ! $kamusEntries->contains('id', $report->kamusEntri->id)) {
+            $kamusEntries->push($report->kamusEntri);
+        }
 
         if ($isAdministrator) {
             /*
@@ -259,6 +313,10 @@ class ReportController extends Controller
             'statusOptions' => $statusOptions,
             'isStaff' => $user->isStaff(),
             'canStaffUpdateStatus' => $user->isStaff() && $statusOptions !== [],
+            'kamusVersion' => $kamusVersion,
+            'kamusEntries' => $kamusEntries,
+            'kamusStatusLabels' => LaporanKamusHasil::STATUS_LABELS,
+            'kamusVerificationLabels' => LaporanKamusVerifikasi::KEPUTUSAN_LABELS,
             'returnUrl' => SafeReturnUrl::reportsIndex($request->query('return_to'), $request),
         ]);
     }
@@ -611,6 +669,44 @@ class ReportController extends Controller
         }
 
         return PortalPresenter::statusValue($value, LaporanMasyarakat::STATUS_LABELS) ?? '';
+    }
+
+    private function kamusStatusFilter(mixed $value): string
+    {
+        $value = trim((string) $value);
+
+        return array_key_exists($value, LaporanKamusHasil::STATUS_LABELS) ? $value : '';
+    }
+
+    private function kamusTahunFilter(mixed $value): string
+    {
+        $value = trim((string) $value);
+
+        if (! preg_match('/^\d{4}$/', $value)) {
+            return '';
+        }
+
+        $tahun = (int) $value;
+
+        return $tahun >= 2000 && $tahun <= 2100 ? (string) $tahun : '';
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function kamusTahunOptions(): array
+    {
+        $years = KamusAcuanVersi::query()->pluck('tahun')->all();
+        $reportYears = LaporanMasyarakat::query()
+            ->whereNotNull('kamus_tahun')
+            ->distinct()
+            ->pluck('kamus_tahun')
+            ->all();
+
+        $years = array_values(array_unique(array_map('intval', array_merge($years, $reportYears))));
+        rsort($years);
+
+        return $years;
     }
 
     private function dateFilter(mixed $value): string

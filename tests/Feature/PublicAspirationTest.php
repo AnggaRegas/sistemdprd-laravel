@@ -58,8 +58,8 @@ class PublicAspirationTest extends TestCase
         $this->get(route('welcome'))
             ->assertOk()
             ->assertSee('ALURAKSI')
-            ->assertSeeText('Sampaikan Aspirasi & Pengaduan Anda')
-            ->assertSeeText('Langsung ke Wakil Rakyat')
+            ->assertSeeText('Alur Aspirasi Jadi Aksi')
+            ->assertSee('Jadi Aksi')
             ->assertSee('Sampaikan Aspirasi')
             ->assertSee(route('aspirasi.create'), false);
     }

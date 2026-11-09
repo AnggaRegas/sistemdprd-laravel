@@ -8,6 +8,7 @@ use App\Models\Arsip;
 use App\Models\DprdMember;
 use App\Models\KategoriArsip;
 use App\Models\User;
+use App\Support\ArchiveFileStorage;
 use Database\Seeders\KategoriArsipSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -166,7 +167,7 @@ class ArchiveHierarchyTest extends TestCase
             ->assertSee('Folder Dokumen')
             ->assertSee('Reses Kelurahan A')
             ->assertDontSee('Buka Folder')
-            ->assertSee('archive-card-link', false)
+            ->assertSee('archive-folder-row-link', false)
             ->assertSee('1 berkas')
             ->assertSee(route('anggota.arsip.dokumen', [$member, $category, $year, $folder]), false)
             ->assertSee(route('anggota.arsip.tahun', [$member, $category]), false);
@@ -304,7 +305,7 @@ class ArchiveHierarchyTest extends TestCase
 
         $this->actingAs($admin)
             ->post($route, $this->documentPayload([
-                'file' => UploadedFile::fake()->create('terlalu-besar.pdf', 10241, 'application/pdf'),
+                'file' => UploadedFile::fake()->create('terlalu-besar.pdf', ArchiveFileStorage::maxUploadKilobytes() + 1, 'application/pdf'),
             ]))
             ->assertSessionHasErrors('file');
 

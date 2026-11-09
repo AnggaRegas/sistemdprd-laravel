@@ -38,6 +38,16 @@ class ArchiveController extends Controller
             'member' => (string) $request->query('member'),
         ];
 
+        /*
+         * Filter khusus grid folder anggota. Dipisahkan dari filter tabel
+         * dokumen (q/kategori/status/tanggal) agar keduanya tidak saling
+         * menimpa saat pengguna berpindah konteks.
+         */
+        $memberFilters = [
+            'q' => Str::limit(trim((string) $request->query('member_q')), 100, ''),
+            'docs' => $this->allowedFilter($request->query('member_docs'), ['has', 'empty']),
+        ];
+
         $baseQuery = Arsip::query()->visibleTo($user);
 
         $query = (clone $baseQuery)
@@ -80,12 +90,49 @@ class ArchiveController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+        /*
+         * Grid folder anggota: hanya anggota aktif yang boleh dilihat pengguna.
+         * Statistik dihitung dengan agregasi (EXISTS) agar tidak memuat seluruh
+         * koleksi anggota ke memori.
+         */
+        $memberBase = DprdMember::query()
+            ->visibleTo($user)
+            ->where('is_active', true);
+
+        $memberStats = [
+            'total' => (clone $memberBase)->count(),
+            'with_documents' => (clone $memberBase)->has('arsips')->count(),
+            'without_documents' => (clone $memberBase)->doesntHave('arsips')->count(),
+        ];
+
+        $memberQuery = (clone $memberBase)->withCount('arsips');
+
+        if ($memberFilters['q'] !== '') {
+            $needle = '%'.Str::lower($memberFilters['q']).'%';
+            $memberQuery->whereRaw('LOWER(nama_lengkap) LIKE ?', [$needle]);
+        }
+
+        if ($memberFilters['docs'] === 'has') {
+            $memberQuery->has('arsips');
+        } elseif ($memberFilters['docs'] === 'empty') {
+            $memberQuery->doesntHave('arsips');
+        }
+
+        $memberFolders = $memberQuery
+            ->orderBy('nama_lengkap')
+            ->paginate(12, ['*'], 'member_page')
+            ->withQueryString();
+
         return view('archives.index', [
             'archives' => $archives,
             'filters' => $filters,
             'categories' => $this->categories(),
             'statuses' => Arsip::STATUS_LABELS,
             'members' => $this->memberOptions($user),
+            'memberFolders' => $memberFolders,
+            'memberFilters' => $memberFilters,
+            'memberStats' => $memberStats,
+            'hasMemberFilters' => $memberFilters['q'] !== '' || $memberFilters['docs'] !== '',
             'totalArchives' => (clone $baseQuery)->count(),
             'filteredTotal' => $filteredTotal,
             'hasFilters' => $filters['q'] !== ''

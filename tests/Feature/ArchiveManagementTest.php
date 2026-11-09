@@ -456,4 +456,275 @@ class ArchiveManagementTest extends TestCase
             ->assertRedirect(route('anggota.arsip', $member))
             ->assertSessionHas('error');
     }
+
+    public function test_main_archive_page_displays_active_member_folder_cards_grid_and_summary_stats(): void
+    {
+        $admin = $this->administrator();
+
+        $memberWithDocs = DprdMember::factory()->create([
+            'nama_lengkap' => 'H. Sukardi Aktif',
+            'is_active' => true,
+        ]);
+        $memberWithoutDocs = DprdMember::factory()->create([
+            'nama_lengkap' => 'Hj. Fatimah Aktif',
+            'is_active' => true,
+        ]);
+        $inactiveMember = DprdMember::factory()->create([
+            'nama_lengkap' => 'Mantan Anggota Nonaktif',
+            'is_active' => false,
+        ]);
+
+        $category = KategoriArsip::factory()->create();
+        Arsip::factory()->create([
+            'dprd_member_id' => $memberWithDocs->id,
+            'kategori_arsip_id' => $category->id,
+            'nama' => 'Laporan Sukardi 1',
+        ]);
+        Arsip::factory()->create([
+            'dprd_member_id' => $memberWithDocs->id,
+            'kategori_arsip_id' => $category->id,
+            'nama' => 'Laporan Sukardi 2',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('arsip.index'));
+
+        $response->assertOk()
+            ->assertSee('Folder Anggota DPRD')
+            ->assertSee('Anggota aktif')
+            ->assertSee('Sudah memiliki dokumen')
+            ->assertSee('Belum memiliki dokumen')
+            ->assertSee('H. Sukardi Aktif')
+            ->assertSee('2 dokumen')
+            ->assertSee('Hj. Fatimah Aktif')
+            ->assertSee('Belum ada dokumen')
+            ->assertSee(route('anggota.arsip', $memberWithDocs), false)
+            ->assertSee(route('anggota.arsip', $memberWithoutDocs), false)
+            ->assertDontSee(route('anggota.arsip', $inactiveMember), false);
+
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $folders */
+        $folders = $response->viewData('memberFolders');
+        $this->assertTrue($folders->contains($memberWithDocs));
+        $this->assertTrue($folders->contains($memberWithoutDocs));
+        $this->assertFalse($folders->contains($inactiveMember));
+
+        $stats = $response->viewData('memberStats');
+        $this->assertSame(2, $stats['total']);
+        $this->assertSame(1, $stats['with_documents']);
+        $this->assertSame(1, $stats['without_documents']);
+    }
+
+    public function test_member_folder_grid_supports_name_search_and_document_availability_filters(): void
+    {
+        $admin = $this->administrator();
+
+        $memberA = DprdMember::factory()->create([
+            'nama_lengkap' => 'Ahmad Legislator',
+            'is_active' => true,
+        ]);
+        $memberB = DprdMember::factory()->create([
+            'nama_lengkap' => 'Bambang Legislator',
+            'is_active' => true,
+        ]);
+
+        $category = KategoriArsip::factory()->create();
+        Arsip::factory()->create([
+            'dprd_member_id' => $memberA->id,
+            'kategori_arsip_id' => $category->id,
+        ]);
+
+        // Search by name
+        $searchResponse = $this->actingAs($admin)
+            ->get(route('arsip.index', ['member_q' => 'Ahmad']));
+        $searchResponse->assertOk()
+            ->assertSee(route('anggota.arsip', $memberA), false)
+            ->assertDontSee(route('anggota.arsip', $memberB), false);
+
+        $searchFolders = $searchResponse->viewData('memberFolders');
+        $this->assertTrue($searchFolders->contains($memberA));
+        $this->assertFalse($searchFolders->contains($memberB));
+
+        // Filter: only members with documents
+        $withDocsResponse = $this->actingAs($admin)
+            ->get(route('arsip.index', ['member_docs' => 'has']));
+        $withDocsResponse->assertOk()
+            ->assertSee(route('anggota.arsip', $memberA), false)
+            ->assertDontSee(route('anggota.arsip', $memberB), false);
+
+        $withDocsFolders = $withDocsResponse->viewData('memberFolders');
+        $this->assertTrue($withDocsFolders->contains($memberA));
+        $this->assertFalse($withDocsFolders->contains($memberB));
+
+        // Filter: only members without documents
+        $withoutDocsResponse = $this->actingAs($admin)
+            ->get(route('arsip.index', ['member_docs' => 'empty']));
+        $withoutDocsResponse->assertOk()
+            ->assertSee(route('anggota.arsip', $memberB), false)
+            ->assertDontSee(route('anggota.arsip', $memberA), false);
+
+        $withoutDocsFolders = $withoutDocsResponse->viewData('memberFolders');
+        $this->assertTrue($withoutDocsFolders->contains($memberB));
+        $this->assertFalse($withoutDocsFolders->contains($memberA));
+    }
+
+    public function test_member_archive_page_shows_year_folder_breakdown_and_navigation_actions(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create([
+            'nama_lengkap' => 'Drs. H. Mulyadi',
+            'is_active' => true,
+        ]);
+
+        $category = KategoriArsip::factory()->create([
+            'nama' => 'POKIR TAHUNAN',
+        ]);
+        $year = ArchiveYear::query()->create([
+            'dprd_member_id' => $member->id,
+            'kategori_arsip_id' => $category->id,
+            'tahun' => 2026,
+        ]);
+        $folder = ArchiveFolder::query()->create([
+            'archive_year_id' => $year->id,
+            'nama' => 'Usulan Kelurahan Wattang',
+            'deskripsi' => 'Daftar usulan pokir',
+        ]);
+        Arsip::factory()->create([
+            'dprd_member_id' => $member->id,
+            'kategori_arsip_id' => $category->id,
+            'archive_folder_id' => $folder->id,
+            'nama' => 'Berkas Usulan 01',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('anggota.arsip', $member));
+
+        $response->assertOk()
+            ->assertSee('Drs. H. Mulyadi')
+            ->assertSee('Kembali ke Folder Anggota')
+            ->assertSee(route('arsip.index'), false)
+            ->assertSee('Unggah Dokumen')
+            ->assertSee(route('arsip.create', ['member' => $member->id]), false)
+            ->assertSee('Kategori Arsip Dokumen')
+            ->assertSee('POKIR TAHUNAN')
+            ->assertSee('Pilih Tahun')
+            ->assertSee(route('anggota.arsip.tahun', [$member, $category]), false)
+            ->assertDontSee('Tahun Anggaran &amp; Folder', false);
+
+        // Alur navigasi: Pilih Tahun -> Pilih Folder -> Daftar Dokumen
+        $yearResponse = $this->actingAs($admin)->get(route('anggota.arsip.tahun', [$member, $category]));
+        $yearResponse->assertOk()
+            ->assertSee('2026')
+            ->assertSee('Pilih Folder')
+            ->assertSee(route('anggota.arsip.folder', [$member, $category, $year]), false);
+
+        $folderResponse = $this->actingAs($admin)->get(route('anggota.arsip.folder', [$member, $category, $year]));
+        $folderResponse->assertOk()
+            ->assertSee('Usulan Kelurahan Wattang')
+            ->assertSee(route('anggota.arsip.dokumen', [$member, $category, $year, $folder]), false);
+
+        // Pre-filled member on create page
+        $createResponse = $this->actingAs($admin)->get(route('arsip.create', ['member' => $member->id]));
+        $createResponse->assertOk()
+            ->assertSee('value="' . $member->id . '" selected', false);
+    }
+
+    public function test_staff_only_sees_assigned_member_card_on_archive_index(): void
+    {
+        $memberA = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Dewan Mitra Staff',
+            'is_active' => true,
+        ]);
+        $memberB = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Dewan Lain',
+            'is_active' => true,
+        ]);
+
+        $staff = User::factory()->staff($memberA)->create();
+
+        $this->actingAs($staff)
+            ->get(route('arsip.index'))
+            ->assertOk()
+            ->assertSee('Anggota Dewan Mitra Staff')
+            ->assertDontSee('Anggota Dewan Lain')
+            ->assertSee('1') // Total anggota aktif scoped to staff
+            ->assertSee(route('anggota.arsip', $memberA), false);
+    }
+
+    public function test_member_archive_page_displays_categories_without_redundant_year_folder_section(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create([
+            'nama_lengkap' => 'Achmad Ariady, S.E.',
+            'is_active' => true,
+        ]);
+
+        $reses = KategoriArsip::factory()->create([
+            'nama' => 'HASIL RESES',
+        ]);
+        $pokir = KategoriArsip::factory()->create([
+            'nama' => 'POKOK-POKOK PIKIRAN',
+        ]);
+
+        ArchiveYear::query()->create([
+            'dprd_member_id' => $member->id,
+            'kategori_arsip_id' => $reses->id,
+            'tahun' => 2029,
+        ]);
+        ArchiveYear::query()->create([
+            'dprd_member_id' => $member->id,
+            'kategori_arsip_id' => $pokir->id,
+            'tahun' => 2028,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('anggota.arsip', $member));
+
+        $response->assertOk()
+            ->assertSee('Kategori Arsip Dokumen')
+            ->assertSee('HASIL RESES')
+            ->assertSee('POKOK-POKOK PIKIRAN')
+            ->assertSee('Pilih Tahun')
+            ->assertSee(route('anggota.arsip.tahun', [$member, $reses]), false)
+            ->assertSee(route('anggota.arsip.tahun', [$member, $pokir]), false)
+            ->assertDontSee('Tahun Anggaran &amp; Folder', false);
+    }
+
+    public function test_member_folder_page_displays_every_folder_without_pagination(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create([
+            'nama_lengkap' => 'Anggota Banyak Folder',
+            'is_active' => true,
+        ]);
+        $category = KategoriArsip::factory()->create(['nama' => 'HASIL RESES']);
+        $year = ArchiveYear::query()->create([
+            'dprd_member_id' => $member->id,
+            'kategori_arsip_id' => $category->id,
+            'tahun' => 2029,
+        ]);
+
+        $folderNames = [];
+
+        for ($index = 1; $index <= 15; $index++) {
+            $name = sprintf('Folder Vertikal %02d', $index);
+            $folderNames[] = $name;
+
+            ArchiveFolder::query()->create([
+                'archive_year_id' => $year->id,
+                'nama' => $name,
+            ]);
+        }
+
+        $response = $this->actingAs($admin)
+            ->get(route('anggota.arsip.folder', [$member, $category, $year]));
+
+        $response->assertOk()
+            ->assertSee('Daftar Folder')
+            ->assertSee('archive-folder-list', false)
+            ->assertSee('15 folder ditampilkan')
+            ->assertDontSee('page-link', false);
+
+        foreach ($folderNames as $name) {
+            $response->assertSee($name);
+        }
+
+        $this->assertSame(15, $year->folders()->count());
+    }
 }

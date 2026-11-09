@@ -92,6 +92,16 @@
                     </li>
 
                     <li>
+                        <a href="{{ route('kamus.index') }}"
+                           class="sidebar-link {{ request()->routeIs('kamus.*') ? 'active' : '' }}"
+                           title="Kamus Acuan"
+                           @if (request()->routeIs('kamus.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-book-open-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Kamus Acuan</span>
+                        </a>
+                    </li>
+
+                    <li>
                         <a href="{{ route('akun.index') }}"
                            class="sidebar-link {{ request()->routeIs('akun.*') ? 'active' : '' }}"
                            title="Kelola Akun Staf"

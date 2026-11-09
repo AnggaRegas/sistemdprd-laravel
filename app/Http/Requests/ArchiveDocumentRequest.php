@@ -3,7 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\Arsip;
+use App\Support\ArchiveFileStorage;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 class ArchiveDocumentRequest extends FormRequest
@@ -20,6 +23,8 @@ class ArchiveDocumentRequest extends FormRequest
     public function rules(): array
     {
         $isCreate = $this->isMethod('post');
+        $maxKilobytes = ArchiveFileStorage::maxUploadKilobytes();
+        $allowedExtensions = ArchiveFileStorage::allowedExtensionsString();
 
         return [
             'nama' => ['required', 'string', 'max:200'],
@@ -29,8 +34,16 @@ class ArchiveDocumentRequest extends FormRequest
             'file' => [
                 $isCreate ? 'required' : 'nullable',
                 'file',
-                'max:10240',
-                'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,webp,txt',
+                "max:{$maxKilobytes}",
+                "mimes:{$allowedExtensions}",
+                static function (string $attribute, mixed $value, Closure $fail): void {
+                    if ($value instanceof UploadedFile) {
+                        $error = ArchiveFileStorage::validateUploadedFile($value);
+                        if ($error !== null) {
+                            $fail($error);
+                        }
+                    }
+                },
             ],
         ];
     }
@@ -54,10 +67,15 @@ class ArchiveDocumentRequest extends FormRequest
      */
     public function messages(): array
     {
+        $maxMegabytes = ArchiveFileStorage::maxUploadMegabytes();
+        $formatsLabel = ArchiveFileStorage::supportedFormatsLabel();
+
         return [
             'file.required' => 'Berkas dokumen wajib diunggah saat menambahkan dokumen baru.',
-            'file.max' => 'Ukuran berkas maksimal 10 MB.',
-            'file.mimes' => 'Format berkas harus PDF, Word, Excel, PowerPoint, JPG, PNG, WEBP, atau TXT.',
+            'file.file' => 'Berkas dokumen yang dipilih tidak valid.',
+            'file.uploaded' => "Berkas gagal diunggah atau melebihi batas maksimal server ({$maxMegabytes} MB).",
+            'file.max' => "Ukuran berkas dokumen tidak boleh melebihi {$maxMegabytes} MB.",
+            'file.mimes' => "Format berkas harus berupa {$formatsLabel}.",
         ];
     }
 

@@ -798,8 +798,7 @@
                     </h1>
 
                     <p class="hero-brand-subtitle reveal reveal-delay-1 mt-3">
-                        Sampaikan Aspirasi &amp; Pengaduan Anda
-                        <span class="block text-[#e6c47d]">Langsung ke Wakil Rakyat</span>
+                        Alur Aspirasi <span class="text-[#e6c47d]">Jadi Aksi</span>
                     </p>
 
                     <p class="reveal reveal-delay-2 mt-5 max-w-xl text-[15px] leading-7 text-white/65 sm:text-base sm:leading-8">

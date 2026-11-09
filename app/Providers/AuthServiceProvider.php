@@ -45,6 +45,15 @@ class AuthServiceProvider extends ServiceProvider
         });
 
         /*
+         * Kamus Acuan hanya dikelola Super Admin (administrator). Staf tetap
+         * dapat melihat ringkasan hasil pada detail laporan, tetapi tidak
+         * dapat mengubah kamus maupun keputusan verifikasi.
+         */
+        Gate::define('manage-kamus-acuan', function (User $user) {
+            return $user->isAdministrator();
+        });
+
+        /*
          * Administrator boleh mengelola hierarki arsip semua anggota.
          * Staf pendamping hanya untuk anggota yang ditugaskan secara aktif.
          */

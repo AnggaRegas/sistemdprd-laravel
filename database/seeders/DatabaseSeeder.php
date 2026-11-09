@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             KategoriArsipSeeder::class,
             AdministratorSeeder::class,
             KomisiSeeder::class,
+            KamusAcuanSeeder::class,
             MemberSeeder::class,
             StaffSeeder::class,
         ]);

@@ -219,11 +219,14 @@ class MemberArchiveController extends Controller
             });
         }
 
+        /*
+         * Seluruh folder pada tahun anggaran ini ditampilkan sekaligus
+         * (tanpa pagination) agar administrator dapat menelusuri daftar
+         * secara vertikal dalam satu halaman.
+         */
         $folders = $query
-            ->orderByDesc('updated_at')
             ->orderBy('nama')
-            ->paginate(12)
-            ->withQueryString();
+            ->get();
 
         return view('members.archive-folders', [
             'member' => $member,

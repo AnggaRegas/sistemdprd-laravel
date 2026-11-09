@@ -3,7 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\RdpDocument;
+use App\Support\ArchiveFileStorage;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 class RdpDocumentRequest extends FormRequest
@@ -35,8 +38,16 @@ class RdpDocumentRequest extends FormRequest
             'file' => [
                 'required',
                 'file',
-                'max:10240',
-                'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,webp,txt',
+                'max:'.ArchiveFileStorage::maxUploadKilobytes(),
+                'mimes:'.ArchiveFileStorage::allowedExtensionsString(),
+                static function (string $attribute, mixed $value, Closure $fail): void {
+                    if ($value instanceof UploadedFile) {
+                        $error = ArchiveFileStorage::validateUploadedFile($value);
+                        if ($error !== null) {
+                            $fail($error);
+                        }
+                    }
+                },
             ],
         ];
     }
@@ -52,6 +63,23 @@ class RdpDocumentRequest extends FormRequest
             'document_date' => 'tanggal dokumen',
             'description' => 'keterangan',
             'file' => 'berkas dokumen',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        $maxMegabytes = ArchiveFileStorage::maxUploadMegabytes();
+        $formatsLabel = ArchiveFileStorage::supportedFormatsLabel();
+
+        return [
+            'file.required' => 'Berkas dokumen wajib diunggah.',
+            'file.file' => 'Berkas dokumen yang dipilih tidak valid.',
+            'file.uploaded' => "Berkas gagal diunggah atau melebihi batas maksimal server ({$maxMegabytes} MB).",
+            'file.max' => "Ukuran berkas dokumen tidak boleh melebihi {$maxMegabytes} MB.",
+            'file.mimes' => "Format berkas harus berupa {$formatsLabel}.",
         ];
     }
 

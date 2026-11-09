@@ -15,10 +15,17 @@
         title="Kategori Arsip Dokumen"
         :description="'Pilih kategori arsip untuk '.$member->nama_lengkap.', lalu telusuri tahun anggaran, folder, dan berkas dokumennya.'"
     >
-        <a href="{{ route('anggota.index') }}" class="btn btn-outline-soft">
+        <a href="{{ route('arsip.index') }}" class="btn btn-outline-soft">
             <i class="ri-arrow-left-line" aria-hidden="true"></i>
-            Kembali ke Anggota
+            Kembali ke Folder Anggota
         </a>
+
+        @can('create', App\Models\Arsip::class)
+            <a href="{{ route('arsip.create', ['member' => $member->id]) }}" class="btn btn-emerald">
+                <i class="ri-upload-cloud-2-line" aria-hidden="true"></i>
+                Unggah Dokumen
+            </a>
+        @endcan
 
         @can('create', App\Models\KategoriArsip::class)
             <a href="{{ route('anggota.arsip.kategori.create', $member) }}" class="btn btn-gold">

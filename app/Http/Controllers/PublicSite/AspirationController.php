@@ -9,6 +9,7 @@ use App\Models\DprdMember;
 use App\Models\DprdRegion;
 use App\Models\LaporanMasyarakat;
 use App\Services\AspirationSimilarityService;
+use App\Services\KamusAcuanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -99,7 +100,8 @@ class AspirationController extends Controller
      */
     public function store(
         PublicAspirationRequest $request,
-        AspirationSimilarityService $similarity
+        AspirationSimilarityService $similarity,
+        KamusAcuanService $kamus
     ): RedirectResponse {
         $validated = $request->validated();
         $file = $request->file('lampiran');
@@ -205,6 +207,17 @@ class AspirationController extends Controller
          */
         try {
             $similarity->analyzeAndStore($report);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        /*
+         * Pemeriksaan Kamus Acuan juga berjalan setelah laporan tersimpan.
+         * Kegagalan pemeriksaan tidak boleh membatalkan aspirasi masyarakat.
+         * Hasil otomatis disimpan terpisah dari keputusan manual Super Admin.
+         */
+        try {
+            $kamus->periksaOtomatis($report);
         } catch (Throwable $exception) {
             report($exception);
         }

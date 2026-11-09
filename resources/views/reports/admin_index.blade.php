@@ -98,10 +98,25 @@
                     <i class="ri-search-line" aria-hidden="true"></i>
                     <input type="search" name="q" value="{{ $searchQuery }}" placeholder="Cari nama pelapor atau isi laporan" aria-label="Cari laporan">
                 </div>
+
+                <select name="kamus_status" class="filter-select" data-auto-submit aria-label="Filter status Kamus Acuan">
+                    <option value="">Semua status kamus</option>
+                    @foreach ($kamusStatuses as $statusValue => $statusLabel)
+                        <option value="{{ $statusValue }}" @selected($filters['kamus_status'] === $statusValue)>{{ $statusLabel }}</option>
+                    @endforeach
+                </select>
+
+                <select name="kamus_tahun" class="filter-select" data-auto-submit aria-label="Filter tahun Kamus Acuan">
+                    <option value="">Semua tahun kamus</option>
+                    @foreach ($kamusTahunOptions as $tahun)
+                        <option value="{{ $tahun }}" @selected($filters['kamus_tahun'] === (string) $tahun)>{{ $tahun }}</option>
+                    @endforeach
+                </select>
+
                 <div class="filter-actions">
                     <button type="submit" class="btn btn-emerald">Cari laporan</button>
                     @if ($hasFolderQuery)
-                        <a href="{{ route('laporan.index', ['anggota' => $selectedMember->id]) }}" class="filter-reset">Hapus pencarian</a>
+                        <a href="{{ route('laporan.index', ['anggota' => $selectedMember->id]) }}" class="filter-reset">Hapus filter</a>
                     @endif
                 </div>
             </form>
@@ -130,6 +145,7 @@
                                 <th scope="col" class="d-none d-md-table-cell">Anggota DPRD tujuan</th>
                                 <th scope="col">Isi aspirasi</th>
                                 <th scope="col">Status</th>
+                                <th scope="col" class="d-none d-lg-table-cell">Kamus Acuan</th>
                                 <th scope="col"><span class="visually-hidden">Tindakan</span></th>
                             </tr>
                         </thead>
@@ -158,6 +174,15 @@
                                         @endif
                                     </td>
                                     <td><span class="status-badge status-{{ $statusTone }}">{{ $report->status_label }}</span></td>
+                                    <td class="d-none d-lg-table-cell">
+                                        <span class="status-badge status-{{ $report->kamus_status_tone }}">{{ $report->kamus_status_label }}</span>
+                                        @if ($report->kamus_entri_id)
+                                            <span class="cell-sub d-block mt-1">{{ $report->kamus_entri_label }}</span>
+                                        @endif
+                                        @if ($report->kamus_tahun)
+                                            <span class="cell-sub d-block">Kamus {{ $report->kamus_tahun }}</span>
+                                        @endif
+                                    </td>
                                     <td>
                                         <a href="{{ route('laporan.show', ['laporan' => $report, 'return_to' => $returnUrl]) }}"
                                            class="btn btn-outline-soft report-view-button">
@@ -183,7 +208,7 @@
     <style>
         .report-folder { transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
         .report-folder:hover { border-color: #b9cdc3 !important; box-shadow: 0 12px 28px -20px rgba(14, 59, 49, .5); transform: translateY(-1px); }
-        .report-simple-table { min-width: 760px; }
+        .report-simple-table { min-width: 920px; }
         .report-simple-table th, .report-simple-table td { padding: 15px 14px; font-size: 13px; vertical-align: middle; }
         .report-summary-cell { min-width: 220px; max-width: 420px; line-height: 1.6; }
         .report-view-button { min-height: 40px; white-space: nowrap; }

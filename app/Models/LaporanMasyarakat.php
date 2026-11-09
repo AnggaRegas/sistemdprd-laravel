@@ -117,6 +117,17 @@ class LaporanMasyarakat extends Model
         'klasifikasi_status',
         'klasifikasi_alasan',
         'klasifikasi_dianalisis_at',
+        'kamus_status',
+        'kamus_status_otomatis',
+        'kamus_hasil_id',
+        'kamus_entri_id',
+        'kamus_versi_id',
+        'kamus_tahun',
+        'kamus_prioritas',
+        'kamus_diperiksa_at',
+        'kamus_diverifikasi_oleh',
+        'kamus_diverifikasi_at',
+        'kamus_catatan_verifikasi',
         'komisi_final_id',
         'komisi_final_ditetapkan_oleh',
         'komisi_final_ditetapkan_at',
@@ -145,6 +156,9 @@ class LaporanMasyarakat extends Model
         'klasifikasi_keywords' => 'array',
         'klasifikasi_skor_detail' => 'array',
         'klasifikasi_dianalisis_at' => 'datetime',
+        'kamus_tahun' => 'integer',
+        'kamus_diperiksa_at' => 'datetime',
+        'kamus_diverifikasi_at' => 'datetime',
         'komisi_final_ditetapkan_at' => 'datetime',
         'disetujui_at' => 'datetime',
     ];
@@ -204,6 +218,117 @@ class LaporanMasyarakat extends Model
     public function comparedSimilarityResults(): HasMany
     {
         return $this->hasMany(LaporanSimilarityResult::class, 'compared_laporan_masyarakat_id');
+    }
+
+    public function kamusHasil(): BelongsTo
+    {
+        return $this->belongsTo(LaporanKamusHasil::class, 'kamus_hasil_id');
+    }
+
+    public function kamusEntri(): BelongsTo
+    {
+        return $this->belongsTo(KamusAcuanEntri::class, 'kamus_entri_id')->withTrashed();
+    }
+
+    public function kamusVersi(): BelongsTo
+    {
+        return $this->belongsTo(KamusAcuanVersi::class, 'kamus_versi_id');
+    }
+
+    public function kamusDiverifikasiOleh(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'kamus_diverifikasi_oleh');
+    }
+
+    public function kamusHasilList(): HasMany
+    {
+        return $this->hasMany(LaporanKamusHasil::class, 'laporan_masyarakat_id')->latest('id');
+    }
+
+    public function kamusVerifikasi(): HasMany
+    {
+        return $this->hasMany(LaporanKamusVerifikasi::class, 'laporan_masyarakat_id')->latest('id');
+    }
+
+    public function getKamusStatusLabelAttribute(): string
+    {
+        return LaporanKamusHasil::STATUS_LABELS[$this->kamus_status]
+            ?? 'BELUM DIPERIKSA';
+    }
+
+    public function getKamusStatusToneAttribute(): string
+    {
+        return LaporanKamusHasil::STATUS_TONES[$this->kamus_status] ?? 'neutral';
+    }
+
+    public function getKamusStatusOtomatisLabelAttribute(): string
+    {
+        if (! $this->kamus_status_otomatis) {
+            return 'Belum diperiksa';
+        }
+
+        return LaporanKamusHasil::STATUS_LABELS[$this->kamus_status_otomatis]
+            ?? ucfirst(str_replace('_', ' ', (string) $this->kamus_status_otomatis));
+    }
+
+    public function getKamusPrioritasLabelAttribute(): string
+    {
+        return $this->kamus_prioritas ?: 'Belum ditetapkan';
+    }
+
+    public function getKamusTahunLabelAttribute(): string
+    {
+        return $this->kamus_tahun ? (string) $this->kamus_tahun : '—';
+    }
+
+    public function getKamusEntriLabelAttribute(): string
+    {
+        if ($this->kamusEntri) {
+            return $this->kamusEntri->kode_label;
+        }
+
+        $snapshot = $this->kamusHasil?->entri_utama_snapshot;
+
+        if (is_array($snapshot) && ! empty($snapshot['kode'])) {
+            return trim(($snapshot['kode'] ?? '').' — '.($snapshot['klasifikasi'] ?? ''), ' —');
+        }
+
+        return 'Belum ada entri';
+    }
+
+    public function hasKamusResult(): bool
+    {
+        return $this->kamus_status !== null && $this->kamus_status !== LaporanKamusHasil::STATUS_BELUM_DIPERIKSA;
+    }
+
+    public function isKamusVerified(): bool
+    {
+        return $this->kamus_diverifikasi_at !== null;
+    }
+
+    public function scopeKamusStatus(Builder $query, ?string $status): Builder
+    {
+        if ($status === null || $status === '') {
+            return $query;
+        }
+
+        if ($status === LaporanKamusHasil::STATUS_BELUM_DIPERIKSA) {
+            return $query->where(function (Builder $query) {
+                $query->whereNull('kamus_status')
+                    ->orWhere('kamus_status', LaporanKamusHasil::STATUS_BELUM_DIPERIKSA);
+            });
+        }
+
+        return $query->where('kamus_status', $status);
+    }
+
+    public function scopeKamusTahun(Builder $query, int|string|null $tahun): Builder
+    {
+        if ($tahun === null || $tahun === '') {
+            return $query;
+        }
+
+        return $query->where('kamus_tahun', (int) $tahun);
     }
 
     public function getDisetujuiAtLabelAttribute(): string

@@ -472,3 +472,538 @@ a.archive-step-link:hover {
         max-width: 160px;
     }
 }
+
+/* ==========================================================================
+   Modern Upload Dropzone & File Picker
+   ========================================================================== */
+
+.document-upload-card {
+    border: 2px dashed var(--dprd-line);
+    border-radius: var(--dprd-radius);
+    background: #fafbfa;
+    padding: 24px;
+    text-align: center;
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    cursor: pointer;
+}
+
+.document-upload-card:hover,
+.document-upload-card.is-dragover {
+    border-color: var(--dprd-gold-500);
+    background: var(--dprd-gold-50);
+}
+
+.document-upload-card.is-invalid-drop {
+    border-color: var(--dprd-danger);
+    background: var(--dprd-danger-bg);
+}
+
+.document-upload-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: var(--dprd-emerald-50);
+    color: var(--dprd-emerald-800);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.document-upload-card:hover .document-upload-icon {
+    transform: translateY(-2px);
+    background: var(--dprd-gold-100);
+    color: var(--dprd-gold-600);
+}
+
+.document-upload-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--dprd-ink);
+    margin-bottom: 4px;
+}
+
+.document-upload-hint {
+    font-size: 0.8rem;
+    color: var(--dprd-muted);
+    margin-bottom: 12px;
+}
+
+.document-upload-meta-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 14px;
+}
+
+.upload-pill {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--dprd-line);
+    color: var(--dprd-ink-soft);
+}
+
+.upload-pill-gold {
+    background: var(--dprd-gold-100);
+    border-color: var(--dprd-gold-400);
+    color: var(--dprd-emerald-950);
+    font-weight: 700;
+}
+
+.upload-selected-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    background: #fff;
+    border: 1px solid #cce0d6;
+    border-radius: var(--dprd-radius-sm);
+    box-shadow: 0 4px 14px rgba(14, 59, 49, 0.05);
+    margin-top: 12px;
+    text-align: left;
+}
+
+.upload-selected-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.upload-selected-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--dprd-emerald-100);
+    color: var(--dprd-emerald-800);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.upload-selected-details {
+    min-width: 0;
+}
+
+.upload-selected-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--dprd-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 360px;
+}
+
+.upload-selected-size {
+    font-size: 0.76rem;
+    color: var(--dprd-muted);
+}
+
+.upload-progress-container {
+    padding: 14px 18px;
+    background: #fff;
+    border: 1px solid var(--dprd-line);
+    border-radius: var(--dprd-radius-sm);
+    margin-top: 12px;
+    text-align: center;
+}
+
+.upload-client-error {
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: var(--dprd-radius-sm);
+    background: var(--dprd-danger-bg);
+    border: 1px solid #f6d5d2;
+    color: var(--dprd-danger);
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}
+
+/* ==========================================================================
+   Folder Anggota DPRD (halaman utama Arsip Dokumen)
+   ========================================================================== */
+
+#folder-anggota,
+#daftar-dokumen {
+    scroll-margin-top: 96px;
+}
+
+.member-folder-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.member-folder-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--dprd-line);
+    border-radius: 14px;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.member-folder-card:hover,
+.member-folder-card:focus-visible {
+    border-color: var(--dprd-gold-400);
+    box-shadow: var(--dprd-shadow-float);
+    transform: translateY(-2px);
+    color: inherit;
+    text-decoration: none;
+}
+
+.member-folder-card:focus-visible {
+    outline: 2px solid var(--dprd-gold-500);
+    outline-offset: 2px;
+}
+
+.member-folder-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--dprd-emerald-100);
+    color: var(--dprd-emerald-800);
+    font-size: 22px;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.member-folder-card:hover .member-folder-icon {
+    background: var(--dprd-gold-100);
+    color: var(--dprd-gold-600);
+}
+
+.member-folder-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.member-folder-name {
+    color: var(--dprd-ink);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.member-folder-meta {
+    color: var(--dprd-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+.member-folder-meta.is-empty {
+    color: var(--dprd-muted-light);
+    font-weight: 500;
+    font-style: italic;
+}
+
+.member-folder-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--dprd-muted-light);
+    font-size: 18px;
+    transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.member-folder-card:hover .member-folder-chevron {
+    color: var(--dprd-gold-600);
+    transform: translateX(2px);
+}
+
+@media (max-width: 991.98px) {
+    .member-folder-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 575.98px) {
+    .member-folder-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .member-folder-card {
+        padding: 13px 14px;
+    }
+
+    .member-folder-name {
+        font-size: 0.84rem;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Ringkasan tahun anggaran + folder pada halaman arsip anggota
+   -------------------------------------------------------------------------- */
+
+.archive-year-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.archive-year-block {
+    padding: 14px 16px;
+    border: 1px solid var(--dprd-line);
+    border-radius: 14px;
+    background: #fcfdfb;
+}
+
+.archive-year-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.archive-year-copy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.archive-year-copy strong {
+    display: block;
+    color: var(--dprd-ink);
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.archive-year-meta {
+    display: block;
+    color: var(--dprd-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.archive-year-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 54px;
+    padding: 5px 10px;
+    border-radius: 9px;
+    background: var(--dprd-emerald-100);
+    color: var(--dprd-emerald-800);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.archive-folder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.archive-folder-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid var(--dprd-line);
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.archive-folder-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid var(--dprd-line);
+    border-radius: 12px;
+    background: #fff;
+    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.archive-folder-item:hover,
+.archive-folder-item:focus-within {
+    border-color: var(--dprd-gold-400);
+    background: var(--dprd-gold-50);
+    box-shadow: 0 10px 24px -18px rgba(10, 47, 39, 0.45);
+    transform: translateY(-1px);
+}
+
+.archive-folder-row-link {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+}
+
+.archive-folder-row-link:focus-visible {
+    outline: 2px solid var(--dprd-gold-500);
+    outline-offset: 2px;
+}
+
+.archive-folder-row-actions {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.archive-folder-row:hover,
+.archive-folder-row:focus-visible {
+    border-color: var(--dprd-gold-400);
+    background: var(--dprd-gold-50);
+    box-shadow: 0 10px 24px -18px rgba(10, 47, 39, 0.45);
+    transform: translateY(-1px);
+    color: inherit;
+    text-decoration: none;
+}
+
+.archive-folder-row:focus-visible {
+    outline: 2px solid var(--dprd-gold-500);
+    outline-offset: 2px;
+}
+
+.archive-folder-row-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--dprd-emerald-100);
+    color: var(--dprd-emerald-800);
+    font-size: 18px;
+    transition: background 0.16s ease, color 0.16s ease;
+}
+
+.archive-folder-row:hover .archive-folder-row-icon {
+    background: var(--dprd-gold-100);
+    color: var(--dprd-gold-600);
+}
+
+.archive-folder-row-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.archive-folder-row-name {
+    color: var(--dprd-ink);
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archive-folder-row-desc {
+    color: var(--dprd-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archive-folder-row-meta {
+    flex-shrink: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--dprd-gold-50);
+    color: var(--dprd-gold-600);
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.archive-folder-row-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--dprd-muted-light);
+    font-size: 18px;
+    transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.archive-folder-row:hover .archive-folder-row-chevron {
+    color: var(--dprd-gold-600);
+    transform: translateX(2px);
+}
+
+@media (max-width: 575.98px) {
+    .archive-year-heading {
+        align-items: flex-start;
+    }
+
+    .archive-year-heading .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .archive-folder-row,
+    .archive-folder-item {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+    }
+
+    .archive-folder-row-copy {
+        flex-basis: calc(100% - 46px);
+    }
+
+    .archive-folder-row-meta {
+        margin-left: 46px;
+    }
+
+    .archive-folder-row-actions {
+        width: 100%;
+        justify-content: flex-end;
+        padding-left: 46px;
+    }
+
+    .archive-folder-row-chevron {
+        margin-left: auto;
+    }
+}

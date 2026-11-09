@@ -316,7 +316,7 @@
                                 @if ($errors->documentUpload->has('file'))
                                     <div class="invalid-feedback">{{ $errors->documentUpload->first('file') }}</div>
                                 @endif
-                                <div class="form-text">Maksimal 10 MB. Format: PDF, Word, Excel, PowerPoint, gambar, atau teks.</div>
+                                <div class="form-text">Maksimal {{ App\Support\ArchiveFileStorage::maxUploadMegabytes() }} MB. Format: {{ App\Support\ArchiveFileStorage::supportedFormatsLabel() }}.</div>
                             </div>
 
                             <div class="col-12">

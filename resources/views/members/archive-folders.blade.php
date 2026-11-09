@@ -78,8 +78,7 @@
             <div>
                 <h2 class="app-card-title">Daftar Folder</h2>
                 <p class="app-card-subtitle">
-                    Menampilkan {{ $folders->firstItem() ?? 0 }}–{{ $folders->lastItem() ?? 0 }}
-                    dari {{ number_format($filteredTotal, 0, ',', '.') }} folder
+                    {{ number_format($folders->count(), 0, ',', '.') }} folder ditampilkan pada tahun anggaran ini.
                 </p>
             </div>
             <span class="status-badge status-neutral">{{ number_format($totalFolders, 0, ',', '.') }} total folder</span>
@@ -115,42 +114,30 @@
             @endif
         @else
             <div class="app-card-body">
-                <div class="archive-grid">
+                <div class="archive-folder-list">
                     @foreach ($folders as $folder)
-                        <article class="archive-card archive-folder-card archive-card-linkable">
+                        <article class="archive-folder-item">
                             <a href="{{ route('anggota.arsip.dokumen', [$member, $category, $archiveYear, $folder]) }}"
-                               class="archive-card-link"
+                               class="archive-folder-row-link"
                                aria-label="Lihat dokumen folder {{ $folder->nama }}"></a>
 
-                            <div class="archive-card-top">
-                                <span class="archive-card-icon archive-card-icon-blue" aria-hidden="true">
-                                    <i class="ri-folder-3-line"></i>
-                                </span>
+                            <span class="archive-folder-row-icon" aria-hidden="true">
+                                <i class="ri-folder-3-line"></i>
+                            </span>
 
-                                <div class="archive-card-copy">
-                                    <div class="archive-card-heading">
-                                        <h3>{{ $folder->nama }}</h3>
-                                        <span class="archive-count-badge">
-                                            {{ number_format($folder->documents_count, 0, ',', '.') }} berkas
-                                        </span>
-                                    </div>
-                                    <p>{{ $folder->deskripsi ?: 'Belum ada keterangan folder.' }}</p>
-                                </div>
+                            <div class="archive-folder-row-copy">
+                                <span class="archive-folder-row-name">{{ $folder->nama }}</span>
+                                <span class="archive-folder-row-desc">
+                                    {{ $folder->deskripsi ?: 'Diperbarui '.($folder->updated_at?->locale('id')->translatedFormat('d M Y') ?? '—') }}
+                                </span>
                             </div>
 
-                            <div class="archive-card-meta">
-                                <span>
-                                    <i class="ri-file-text-line" aria-hidden="true"></i>
-                                    {{ number_format($folder->documents_count, 0, ',', '.') }} dokumen
-                                </span>
-                                <span>
-                                    <i class="ri-time-line" aria-hidden="true"></i>
-                                    Diperbarui {{ $folder->updated_at?->locale('id')->translatedFormat('d M Y') ?? '—' }}
-                                </span>
-                            </div>
+                            <span class="archive-folder-row-meta">
+                                {{ number_format($folder->documents_count, 0, ',', '.') }} berkas
+                            </span>
 
                             @can('manage-member-archives', $member)
-                                <div class="archive-card-actions">
+                                <div class="archive-folder-row-actions">
                                     <a href="{{ route('anggota.arsip.folder.edit', [$member, $category, $archiveYear, $folder]) }}"
                                        class="btn btn-outline-soft btn-sm">
                                         <i class="ri-edit-line" aria-hidden="true"></i>
@@ -175,17 +162,13 @@
                                     </button>
                                 </div>
                             @endcan
+
+                            <span class="archive-folder-row-chevron" aria-hidden="true">
+                                <i class="ri-arrow-right-s-line"></i>
+                            </span>
                         </article>
                     @endforeach
                 </div>
-            </div>
-
-            <div class="table-footer">
-                <p class="table-footer-note">
-                    Menampilkan <strong>{{ $folders->firstItem() }}–{{ $folders->lastItem() }}</strong>
-                    dari <strong>{{ number_format($filteredTotal, 0, ',', '.') }}</strong> folder
-                </p>
-                <x-admin.pagination :paginator="$folders" />
             </div>
         @endif
     </div>
