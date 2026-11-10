@@ -35,6 +35,13 @@
                 Verifikasi &amp; Disposisi
             </a>
         @endif
+
+        @if ($isAdministrator)
+            <button type="button" class="btn btn-soft-danger" data-bs-toggle="modal" data-bs-target="#deleteReportDetailModal">
+                <i class="ri-delete-bin-6-line" aria-hidden="true"></i>
+                Hapus Aspirasi
+            </button>
+        @endif
     </x-admin.page-header>
 
     <div class="row g-3">
@@ -468,6 +475,83 @@
                     </div>
                 </div>
 
+                <div class="app-card mt-3" id="kemiripan">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Kemiripan Aspirasi</h2>
+                            <p class="app-card-subtitle">Status keputusan dan aspirasi lain yang terdeteksi mirip.</p>
+                        </div>
+                    </div>
+
+                    <div class="app-card-body">
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            @if ($report->similarity_status)
+                                <span class="status-badge status-{{ $report->is_duplicate_merged ? 'danger' : 'info' }}">
+                                    {{ $report->similarity_status_label }}
+                                </span>
+                            @elseif (! empty($similarityMatches))
+                                <span class="status-badge status-warning">Aspirasi Mirip Ditemukan</span>
+                            @endif
+                            @if ($report->similarityGroup)
+                                <span class="status-badge status-neutral">Kelompok {{ $report->similarityGroup->kode }}</span>
+                            @endif
+                        </div>
+
+                        @if ($report->duplicateOf)
+                            <p class="cell-sub mb-2">
+                                <i class="ri-link" aria-hidden="true"></i>
+                                Digabungkan ke aspirasi utama
+                                <a href="{{ route('laporan.show', ['laporan' => $report->duplicateOf, 'return_to' => $returnUrl]) }}">
+                                    {{ $report->duplicateOf->nomor_tiket }}
+                                </a>.
+                            </p>
+
+                            @if ($isAdministrator)
+                                <form method="POST" action="{{ route('laporan.kemiripan.decide', $report) }}" class="mb-2">
+                                    @csrf
+                                    <input type="hidden" name="action" value="tetap_terpisah">
+                                    <input type="hidden" name="selected_ids[]" value="{{ $report->id }}">
+                                    <input type="hidden" name="return_to" value="{{ $returnUrl }}">
+                                    <button type="submit" class="btn btn-outline-soft btn-sm">
+                                        <i class="ri-link-unlink" aria-hidden="true"></i>
+                                        Bukan Duplikat / Pisahkan
+                                    </button>
+                                </form>
+                            @endif
+                        @endif
+
+                        @if (! empty($similarityMatches))
+                            <p class="cell-sub mb-2">
+                                Mirip dengan {{ collect($similarityMatches)->pluck('nomor_tiket')->filter()->implode(', ') }}.
+                            </p>
+
+                            <ul class="similarity-mini-list">
+                                @foreach ($similarityMatches as $match)
+                                    <li>
+                                        <a href="{{ route('laporan.show', ['laporan' => $match['id'], 'return_to' => $returnUrl]) }}">
+                                            <strong>{{ $match['nomor_tiket'] }}</strong>
+                                            <span class="status-badge status-danger">
+                                                {{ number_format($match['score'] * 100, 1, ',', '.') }}%
+                                            </span>
+                                            @if ($match['location_score'] !== null && $match['problem_score'] !== null)
+                                                <span class="d-block cell-sub">
+                                                    Lokasi {{ number_format($match['location_score'] * 100, 1, ',', '.') }}%
+                                                    · Inti permasalahan {{ number_format($match['problem_score'] * 100, 1, ',', '.') }}%
+                                                </span>
+                                            @endif
+                                            <span class="d-block cell-sub">{{ \Illuminate\Support\Str::limit($match['ringkasan'], 90) }}</span>
+                                        </a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+
+                        @if ($report->similarity_note)
+                            <p class="cell-sub mt-2 mb-0"><strong>Catatan keputusan:</strong> {{ $report->similarity_note }}</p>
+                        @endif
+                    </div>
+                </div>
+
                 <div class="app-card mt-3" id="analisis">
                     <div class="app-card-header">
                         <div>
@@ -550,6 +634,68 @@
         </div>
     </div>
 
+    @if ($isAdministrator)
+        <div class="modal fade" id="deleteReportDetailModal" tabindex="-1" aria-labelledby="deleteReportDetailModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content detail-delete-modal">
+                    <form method="POST" action="{{ route('laporan.destroy', $report) }}">
+                        @csrf
+                        @method('DELETE')
+                        <input type="hidden" name="return_to" value="{{ $returnUrl }}">
+
+                        <div class="modal-header border-0 pb-0">
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="detail-delete-icon" aria-hidden="true">
+                                    <i class="ri-delete-bin-6-line"></i>
+                                </span>
+                                <div>
+                                    <h5 class="modal-title mb-0" id="deleteReportDetailModalLabel">Hapus aspirasi?</h5>
+                                    <span class="cell-sub">{{ $report->nomor_tiket }}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                        </div>
+
+                        <div class="modal-body">
+                            <p class="mb-3">
+                                Aspirasi dari <strong>{{ $report->pelapor_nama }}</strong>
+                                tentang <strong>{{ $report->ringkasan }}</strong> akan dihapus dari daftar.
+                            </p>
+
+                            @if ($report->similarityGroup && $report->similarityGroup->main_laporan_id === $report->id)
+                                <div class="alert alert-warning app-alert mb-3" role="note">
+                                    <i class="ri-alert-line" aria-hidden="true"></i>
+                                    <div>
+                                        Aspirasi ini adalah aspirasi utama kelompok
+                                        {{ $report->similarityGroup->kode }}. Sistem akan mempromosikan
+                                        anggota lain sebagai aspirasi utama pengganti atau membubarkan
+                                        kelompok bila tidak ada anggota tersisa.
+                                    </div>
+                                </div>
+                            @endif
+
+                            <label for="detailDeleteReason" class="form-label">Alasan penghapusan <span class="text-muted">(opsional)</span></label>
+                            <textarea id="detailDeleteReason" name="alasan" rows="2" maxlength="500" class="form-control" placeholder="Catatan internal penghapusan"></textarea>
+
+                            <p class="detail-delete-note">
+                                <i class="ri-shield-check-line" aria-hidden="true"></i>
+                                Data tetap tersimpan sebagai arsip terhapus (soft delete) dan tercatat pada log aktivitas.
+                            </p>
+                        </div>
+
+                        <div class="modal-footer border-0 pt-0">
+                            <button type="button" class="btn btn-outline-soft" data-bs-dismiss="modal">Batal</button>
+                            <button type="submit" class="btn btn-soft-danger">
+                                <i class="ri-delete-bin-6-line" aria-hidden="true"></i>
+                                Hapus Aspirasi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if ($isStaff && $activeAssignment && (int) $activeAssignment->user_id === (int) auth()->id() && ! $activeAssignment->isSelesai())
         @include('penugasan._complete-modal')
     @endif
@@ -558,5 +704,13 @@
 @push('styles')
     <style>
         .report-quote { font-size: 12.5px !important; }
+        .similarity-mini-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+        .similarity-mini-list li { border: 1px solid #e5e9e6; border-radius: 12px; padding: 10px 12px; background: #fbfcfa; }
+        .similarity-mini-list a { color: #155043; text-decoration: none; font-size: 12px; }
+        .similarity-mini-list a:hover { color: #0e3b31; }
+        .detail-delete-modal { border: 0; border-radius: 22px; overflow: hidden; }
+        .detail-delete-icon { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 15px; background: #fdeef0; color: #b03643; font-size: 22px; flex-shrink: 0; }
+        .detail-delete-note { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-size: 11px; line-height: 1.6; color: #7b8781; }
+        .detail-delete-note i { margin-top: 1px; color: #155043; font-size: 15px; }
     </style>
 @endpush

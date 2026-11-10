@@ -25,6 +25,7 @@ class SafeReturnUrl
         'anggota',
         'kamus_status',
         'kamus_tahun',
+        'kemiripan',
     ];
 
     public static function reportsIndex(?string $candidate, Request $request): string

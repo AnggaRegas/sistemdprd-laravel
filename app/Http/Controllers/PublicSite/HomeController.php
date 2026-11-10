@@ -5,7 +5,6 @@ namespace App\Http\Controllers\PublicSite;
 use App\Http\Controllers\Controller;
 use App\Models\LandingGallery;
 use App\Models\LandingGalleryPhoto;
-use App\Models\LandingNews;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
@@ -25,15 +24,7 @@ class HomeController extends Controller
      */
     public function index(): View
     {
-        $latestNews = LandingNews::query()
-            ->visible()
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->limit(3)
-            ->get();
-
         return view('welcome', [
-            'latestNews' => $latestNews,
             'galleryPhotos' => $this->galleryPreview(),
         ]);
     }

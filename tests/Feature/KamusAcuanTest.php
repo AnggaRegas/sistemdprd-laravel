@@ -365,11 +365,11 @@ class KamusAcuanTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Hasil Pemeriksaan Kamus Acuan')
-            ->assertSee('Mengapa hasil ini muncul?')
-            ->assertSee('Riwayat Pemeriksaan Otomatis')
-            ->assertSee('Riwayat Verifikasi Manual')
-            ->assertSee('Periksa Ulang Otomatis');
+            ->assertSee('Terdaftar di Kamus Acuan')
+            ->assertDontSee('Mengapa hasil ini muncul?')
+            ->assertDontSee('Riwayat Pemeriksaan Otomatis')
+            ->assertSee('Periksa Ulang Otomatis')
+            ->assertSee('Simpan Keputusan Manual');
     }
 
     public function test_activation_of_new_version_does_not_change_existing_auto_result_without_reevaluation(): void
@@ -482,9 +482,9 @@ class KamusAcuanTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('BELUM DIPERIKSA')
+            ->assertSee('Tidak Terdaftar di Kamus Acuan')
             ->assertSee('Belum ada versi Kamus Acuan aktif')
-            ->assertSee('Laporan ini belum memiliki hasil pemeriksaan Kamus Acuan');
+            ->assertSee('belum diperiksa terhadap Kamus Acuan');
     }
 
     public function test_new_version_copies_active_entries_without_reviving_deleted_ones(): void

@@ -6,17 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\KamusAcuanEntriRequest;
 use App\Http\Requests\KamusAcuanVersiRequest;
 use App\Http\Requests\KamusImportRequest;
+use App\Http\Requests\KamusUploadRequest;
 use App\Models\DprdCommission;
 use App\Models\KamusAcuanEntri;
 use App\Models\KamusAcuanRiwayat;
 use App\Models\KamusAcuanVersi;
+use App\Models\KamusKriteria;
 use App\Models\LaporanKamusHasil;
 use App\Models\LaporanMasyarakat;
 use App\Services\KamusAcuanService;
+use App\Services\KamusUploadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -24,10 +28,11 @@ use Throwable;
 
 class KamusAcuanController extends Controller
 {
-    public function __construct(private readonly KamusAcuanService $kamus)
-    {
+    public function __construct(
+        private readonly KamusAcuanService $kamus,
+        private readonly KamusUploadService $uploads
+    ) {
     }
-
     public function index(Request $request): View
     {
         $this->authorize('manage-kamus-acuan');
@@ -107,6 +112,17 @@ class KamusAcuanController extends Controller
             'statusSummary' => $statusSummary,
             'activeVersion' => $versions->firstWhere('is_active', true),
             'totalReports' => LaporanMasyarakat::query()->count(),
+            'kriteria' => $selectedVersion
+                ? $selectedVersion->kriteria()->ordered()->get()
+                : collect(),
+            'kriteriaFaktorTersedia' => $selectedVersion
+                ? collect(KamusKriteria::FAKTORS)->except(
+                    $selectedVersion->kriteria()->pluck('kode')->all()
+                )
+                : collect(),
+            'kriteriaTerakhirDiperbarui' => $selectedVersion
+                ? $selectedVersion->kriteria()->max('updated_at')
+                : null,
         ]);
     }
 
@@ -229,6 +245,56 @@ class KamusAcuanController extends Controller
         return back()->with('success', 'Entri '.$kode.' dihapus secara lunak. Riwayat pemeriksaan lama tetap tersimpan.');
     }
 
+    public function storeKriteria(Request $request, KamusAcuanVersi $version): RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $validated = $request->validate([
+            'kode' => ['required', 'string', Rule::in(array_keys(KamusKriteria::FAKTORS))],
+            'nama' => ['nullable', 'string', 'max:120'],
+            'bobot' => ['required', 'numeric', 'min:0', 'max:999'],
+            'keterangan' => ['nullable', 'string', 'max:1000'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $criteria = $this->kamus->createCriteria($version, $validated, $request->user());
+
+        return redirect()
+            ->route('kamus.index', ['versi' => $version->id])
+            ->with('success', 'Kriteria '.$criteria->nama.' berhasil ditambahkan dan langsung dipakai pada perhitungan berikutnya.');
+    }
+
+    public function updateKriteria(Request $request, KamusKriteria $criteria): RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $validated = $request->validate([
+            'nama' => ['required', 'string', 'max:120'],
+            'bobot' => ['required', 'numeric', 'min:0', 'max:999'],
+            'keterangan' => ['nullable', 'string', 'max:1000'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $this->kamus->updateCriteria($criteria, $validated, $request->user());
+
+        return redirect()
+            ->route('kamus.index', ['versi' => $criteria->kamus_acuan_versi_id])
+            ->with('success', 'Kriteria '.$criteria->nama.' diperbarui. Perhitungan SPK berikutnya memakai nilai baru.');
+    }
+
+    public function destroyKriteria(Request $request, KamusKriteria $criteria): RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $versionId = $criteria->kamus_acuan_versi_id;
+        $nama = $criteria->nama;
+        $this->kamus->deleteCriteria($criteria, $request->user());
+
+        return redirect()
+            ->route('kamus.index', ['versi' => $versionId])
+            ->with('success', 'Kriteria '.$nama.' dihapus. Perhitungan kembali memakai nilai bawaan.');
+    }
+
     public function importForm(KamusAcuanVersi $version): View
     {
         $this->authorize('manage-kamus-acuan');
@@ -268,6 +334,112 @@ class KamusAcuanController extends Controller
             'kamus-acuan-'.$version->tahun.'-'.Str::slug($version->nama).'.csv',
             $this->kamus->exportRows($version)
         );
+    }
+
+    public function uploadForm(KamusAcuanVersi $version): View
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        return view('kamus.upload', [
+            'version' => $version,
+            'limits' => $this->uploads->limits(),
+            'formats' => \App\Services\KamusFileParser::FORMAT_LABELS,
+        ]);
+    }
+
+    public function uploadPreview(
+        KamusUploadRequest $request,
+        KamusAcuanVersi $version
+    ): RedirectResponse {
+        $this->authorize('manage-kamus-acuan');
+
+        try {
+            $preview = $this->uploads->analyze($request->file('file'), $version);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withInput()->with(
+                'error',
+                'Berkas belum dapat dibaca. Pastikan format dan isi berkas valid; tidak ada data Kamus Acuan yang diubah.'
+            );
+        }
+
+        $request->session()->put($this->uploads->sessionKey($version->id), $preview);
+
+        return redirect()->route('kamus.versi.unggah.pratinjau', $version);
+    }
+
+    public function uploadPreviewShow(Request $request, KamusAcuanVersi $version): View|RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $preview = $request->session()->get($this->uploads->sessionKey($version->id));
+
+        if (! is_array($preview) || (int) ($preview['version_id'] ?? 0) !== (int) $version->id) {
+            return redirect()
+                ->route('kamus.versi.unggah', $version)
+                ->with('warning', 'Pratinjau tidak ditemukan atau sudah kedaluwarsa. Silakan unggah berkas kembali.');
+        }
+
+        return view('kamus.upload_preview', [
+            'version' => $version,
+            'preview' => $preview,
+            'limits' => $this->uploads->limits(),
+        ]);
+    }
+
+    public function uploadApply(Request $request, KamusAcuanVersi $version): RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $validated = $request->validate([
+            'mode' => ['required', 'string', 'in:gabung,ganti'],
+            'token' => ['required', 'string'],
+        ]);
+
+        $preview = $request->session()->get($this->uploads->sessionKey($version->id));
+
+        if (! is_array($preview) || ! hash_equals((string) ($preview['token'] ?? ''), $validated['token'])) {
+            return redirect()
+                ->route('kamus.versi.unggah', $version)
+                ->with('error', 'Sesi pratinjau tidak cocok atau sudah kedaluwarsa. Unggah ulang berkas untuk mencegah perubahan yang tidak disengaja.');
+        }
+
+        try {
+            $result = $this->uploads->apply($version, $preview, $request->user(), $validated['mode']);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('kamus.versi.unggah.pratinjau', $version)
+                ->with('error', 'Penerapan berkas gagal dan seluruh perubahan dibatalkan.');
+        }
+
+        $request->session()->forget($this->uploads->sessionKey($version->id));
+
+        return redirect()
+            ->route('kamus.index', ['versi' => $version->id])
+            ->with('success', sprintf(
+                'Berkas Kamus Acuan diterapkan: %d entri dibuat, %d diperbarui, %d dihapus lunak.',
+                $result['dibuat'],
+                $result['diperbarui'],
+                $result['dinonaktifkan']
+            ));
+    }
+
+    public function uploadCancel(Request $request, KamusAcuanVersi $version): RedirectResponse
+    {
+        $this->authorize('manage-kamus-acuan');
+
+        $request->session()->forget($this->uploads->sessionKey($version->id));
+
+        return redirect()
+            ->route('kamus.index', ['versi' => $version->id])
+            ->with('info', 'Pratinjau unggahan dibatalkan. Tidak ada data Kamus Acuan yang diubah.');
     }
 
     public function template(): StreamedResponse

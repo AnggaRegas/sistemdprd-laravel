@@ -159,24 +159,12 @@
                     <div class="hidden items-center gap-7 lg:flex">
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#beranda">Beranda</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#layanan">Layanan</a>
-                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#berita">Informasi</a>
+                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#dokumentasi">Dokumentasi</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#alur">Alur Pengajuan</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="{{ route('welcome') }}#faq">FAQ</a>
                     </div>
 
                     <div class="hidden items-center gap-2.5 lg:flex">
-                        @auth
-                            <a href="{{ route('dashboard') }}"
-                               class="inline-flex items-center gap-2 rounded-full border border-[#0e3b31]/20 px-4 py-2.5 text-[12px] font-bold text-[#0e3b31] transition hover:border-[#0e3b31] hover:bg-[#0e3b31] hover:text-white">
-                                Dashboard
-                            </a>
-                        @else
-                            <a href="{{ route('login') }}"
-                               class="inline-flex items-center gap-2 rounded-full border border-[#0e3b31]/20 px-4 py-2.5 text-[12px] font-bold text-[#0e3b31] transition hover:border-[#0e3b31] hover:bg-[#0e3b31] hover:text-white">
-                                Portal Petugas
-                            </a>
-                        @endauth
-
                         <a href="{{ route('aspirasi.create') }}"
                            class="group inline-flex items-center gap-2 rounded-full bg-[#0e3b31] px-5 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#082a23]">
                             Sampaikan Aspirasi
@@ -207,23 +195,13 @@
                     <div class="flex flex-col">
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#beranda">Beranda</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#layanan">Layanan</a>
-                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#berita">Informasi</a>
+                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#dokumentasi">Dokumentasi</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#alur">Alur Pengajuan</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="{{ route('welcome') }}#faq">FAQ</a>
 
                         <a href="{{ route('aspirasi.create') }}" class="mt-3 rounded-xl bg-[#0e3b31] px-4 py-3.5 text-center text-sm font-bold text-white">
                             Sampaikan Aspirasi
                         </a>
-
-                        @auth
-                            <a href="{{ route('dashboard') }}" class="mt-2 rounded-xl border border-[#e5ddcc] px-4 py-3.5 text-center text-sm font-bold text-[#0e3b31]">
-                                Dashboard Petugas
-                            </a>
-                        @else
-                            <a href="{{ route('login') }}" class="mt-2 rounded-xl border border-[#e5ddcc] px-4 py-3.5 text-center text-sm font-bold text-[#0e3b31]">
-                                Portal Petugas
-                            </a>
-                        @endauth
                     </div>
                 </div>
             </div>
@@ -277,7 +255,7 @@
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
                         <a href="{{ route('welcome') }}#beranda" class="transition hover:text-[#e6c47d]">Beranda</a>
                         <a href="{{ route('welcome') }}#layanan" class="transition hover:text-[#e6c47d]">Layanan</a>
-                        <a href="{{ route('welcome') }}#berita" class="transition hover:text-[#e6c47d]">Informasi</a>
+                        <a href="{{ route('welcome') }}#dokumentasi" class="transition hover:text-[#e6c47d]">Dokumentasi</a>
                         <a href="{{ route('welcome') }}#alur" class="transition hover:text-[#e6c47d]">Alur Pengajuan</a>
                         <a href="{{ route('welcome') }}#faq" class="transition hover:text-[#e6c47d]">Pertanyaan Umum</a>
                     </div>
@@ -287,11 +265,6 @@
                     <h2 class="text-[11px] font-extrabold uppercase tracking-[.18em] text-[#e6c47d]">Portal</h2>
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
                         <a href="{{ route('aspirasi.create') }}" class="transition hover:text-[#e6c47d]">Sampaikan Aspirasi</a>
-                        @auth
-                            <a href="{{ route('dashboard') }}" class="transition hover:text-[#e6c47d]">Dashboard Petugas</a>
-                        @else
-                            <a href="{{ route('login') }}" class="transition hover:text-[#e6c47d]">Portal Petugas</a>
-                        @endauth
                         <a href="{{ route('welcome') }}#alur" class="transition hover:text-[#e6c47d]">Panduan Pengajuan</a>
                     </div>
                 </div>

@@ -207,4 +207,89 @@ class PortalAccessTest extends TestCase
             ->assertSee('Tidak ada penugasan aktif')
             ->assertSee('Belum ada riwayat');
     }
+
+    public function test_public_pages_do_not_expose_staff_or_internal_login_and_dashboard_links(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee('Portal Petugas')
+            ->assertDontSee('Dashboard Petugas')
+            ->assertDontSee(route('login'))
+            ->assertDontSee(route('dashboard'));
+
+        $this->get(route('aspirasi.create'))
+            ->assertOk()
+            ->assertDontSee('Portal Petugas')
+            ->assertDontSee('Dashboard Petugas')
+            ->assertDontSee(route('login'))
+            ->assertDontSee(route('dashboard'));
+
+        $this->get(route('agenda.index'))
+            ->assertOk()
+            ->assertDontSee('Portal Petugas')
+            ->assertDontSee('Dashboard Petugas')
+            ->assertDontSee(route('login'))
+            ->assertDontSee(route('dashboard'));
+    }
+
+    public function test_unauthenticated_guests_cannot_access_internal_routes(): void
+    {
+        $protectedEndpoints = [
+            '/dashboard',
+            '/dashboard/staf',
+            '/kamus-acuan',
+            '/laporan',
+            '/arsip',
+            '/anggota',
+            '/akun',
+            '/penugasan',
+        ];
+
+        foreach ($protectedEndpoints as $endpoint) {
+            $this->get($endpoint)->assertRedirect(route('login'));
+        }
+    }
+
+    public function test_staff_cannot_escalate_privilege_to_administrator_routes(): void
+    {
+        $member = DprdMember::factory()->create();
+        $staff = User::factory()->staff($member)->create();
+
+        $adminOnlyEndpoints = [
+            '/dashboard',
+            '/kamus-acuan',
+            '/akun',
+            '/landing-page/berita',
+            '/landing-page/agenda',
+        ];
+
+        foreach ($adminOnlyEndpoints as $endpoint) {
+            $this->actingAs($staff)
+                ->get($endpoint)
+                ->assertForbidden();
+        }
+    }
+
+    public function test_session_regeneration_and_invalidation_flow(): void
+    {
+        $user = User::factory()->administrator()->create([
+            'username' => 'admin.audit.keamanan',
+            'password' => 'password123',
+        ]);
+
+        $this->get('/login');
+        $initialSessionId = session()->getId();
+
+        $response = $this->post('/login', [
+            'username' => 'admin.audit.keamanan',
+            'password' => 'password123',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertNotSame($initialSessionId, session()->getId());
+
+        $this->post('/logout');
+        $this->assertGuest();
+        $this->get('/dashboard')->assertRedirect(route('login'));
+    }
 }

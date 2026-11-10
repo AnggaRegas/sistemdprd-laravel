@@ -30,4 +30,12 @@ return [
 
     // Batas jumlah baris impor CSV per unggahan.
     'import_max_rows' => 5000,
+
+    /*
+     * Batas unggahan Kamus Acuan (CSV/XLSX/XLS/PDF). Nilai ini adalah batas
+     * aplikasi; batas PHP (upload_max_filesize/post_max_size) dan web server
+     * tetap berlaku dan ditampilkan transparan di halaman unggah.
+     */
+    'upload_max_kb' => (int) env('KAMUS_UPLOAD_MAX_KB', 20480),
+    'upload_max_rows' => (int) env('KAMUS_UPLOAD_MAX_ROWS', 10000),
 ];

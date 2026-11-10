@@ -655,52 +655,14 @@
                     <div class="hidden items-center gap-8 lg:flex">
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#beranda">Beranda</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#layanan">Layanan</a>
-                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#berita">Informasi</a>
+                        <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#dokumentasi">Dokumentasi</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#alur">Alur Pengajuan</a>
                         <a class="nav-link text-[13px] font-semibold text-[#52605b] hover:text-[#0e3b31]" href="#faq">FAQ</a>
                         <a class="nav-link text-[13px] font-extrabold text-[#a17f3e] hover:text-[#0e3b31]" href="{{ route('aspirasi.create') }}">Aspirasi</a>
                     </div>
 
-                    <!-- TOMBOL PORTAL PETUGAS & TOGGLE MOBILE -->
+                    <!-- TOGGLE MOBILE -->
                     <div class="flex items-center gap-2.5">
-                        @auth
-                            <div class="relative group">
-                                <a href="{{ route('dashboard') }}"
-                                   class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-[#0e3b31] text-[#e6c47d] shadow-sm transition-all duration-200 hover:bg-[#082a23] hover:shadow focus:outline-none focus:ring-2 focus:ring-[#0e3b31]/20"
-                                   title="Dashboard Petugas"
-                                   aria-label="Dashboard Petugas">
-                                    <svg class="h-5 w-5 transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <rect width="7" height="9" x="3" y="3" rx="1"/>
-                                        <rect width="7" height="5" x="14" y="3" rx="1"/>
-                                        <rect width="7" height="9" x="14" y="12" rx="1"/>
-                                        <rect width="7" height="5" x="3" y="16" rx="1"/>
-                                    </svg>
-                                    <span class="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-                                    </span>
-                                </a>
-                                <span class="pointer-events-none absolute -bottom-9 right-0 hidden whitespace-nowrap rounded-lg bg-[#0e3b31] px-2.5 py-1 text-[11px] font-bold text-white shadow-lg transition-all duration-200 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 lg:block">
-                                    Dashboard Petugas
-                                </span>
-                            </div>
-                        @else
-                            <div class="relative group">
-                                <a href="{{ route('login') }}"
-                                   class="flex h-10 w-10 items-center justify-center rounded-xl border border-[#0e3b31]/15 bg-white/80 text-[#0e3b31] shadow-xs backdrop-blur-sm transition-all duration-200 hover:border-[#0e3b31] hover:bg-[#0e3b31] hover:text-[#e6c47d] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0e3b31]/20"
-                                   title="Portal Petugas"
-                                   aria-label="Portal Petugas">
-                                    <svg class="h-5 w-5 transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                                        <circle cx="12" cy="7" r="4"/>
-                                    </svg>
-                                </a>
-                                <span class="pointer-events-none absolute -bottom-9 right-0 hidden whitespace-nowrap rounded-lg bg-[#0e3b31] px-2.5 py-1 text-[11px] font-bold text-white shadow-lg transition-all duration-200 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 lg:block">
-                                    Portal Petugas
-                                </span>
-                            </div>
-                        @endauth
-
                         <!-- TOGGLE MOBILE -->
                         <button
                             @click="menuOpen = !menuOpen"
@@ -725,30 +687,10 @@
                     <div class="flex flex-col">
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#beranda">Beranda</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#layanan">Layanan</a>
-                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#berita">Informasi</a>
+                        <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#dokumentasi">Dokumentasi</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#alur">Alur Pengajuan</a>
                         <a @click="menuOpen = false" class="rounded-xl px-4 py-3 text-sm font-semibold text-[#33443e] transition hover:bg-[#f7f4ec]" href="#faq">FAQ</a>
                         <a @click="menuOpen = false" class="rounded-xl bg-[#f6ecd7] px-4 py-3 text-sm font-extrabold text-[#7a5e28] transition hover:bg-[#f0e1c0]" href="{{ route('aspirasi.create') }}">Sampaikan Aspirasi</a>
-
-                        @auth
-                            <a href="{{ route('dashboard') }}" class="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#0e3b31] px-4 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#082a23]">
-                                <svg class="h-4 w-4 text-[#e6c47d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <rect width="7" height="9" x="3" y="3" rx="1"/>
-                                    <rect width="7" height="5" x="14" y="3" rx="1"/>
-                                    <rect width="7" height="9" x="14" y="12" rx="1"/>
-                                    <rect width="7" height="5" x="3" y="16" rx="1"/>
-                                </svg>
-                                <span>Dashboard Petugas</span>
-                            </a>
-                        @else
-                            <a href="{{ route('login') }}" class="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#0e3b31] px-4 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#082a23]">
-                                <svg class="h-4 w-4 text-[#e6c47d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                                    <circle cx="12" cy="7" r="4"/>
-                                </svg>
-                                <span>Portal Petugas</span>
-                            </a>
-                        @endauth
                     </div>
                 </div>
             </div>
@@ -757,7 +699,6 @@
 
     <main id="konten">
         @php
-            $latestNews = $latestNews ?? collect();
             $galleryPhotos = $galleryPhotos ?? collect();
         @endphp
 
@@ -814,9 +755,9 @@
                             </svg>
                         </a>
 
-                        <a href="#berita"
+                        <a href="#dokumentasi"
                            class="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/[0.04] px-6 py-3.5 text-sm font-bold text-white transition hover:border-white/35 hover:bg-white/10">
-                            Jelajahi Informasi
+                            Lihat Dokumentasi
                         </a>
                     </div>
 
@@ -849,7 +790,7 @@
                             <span class="h-px w-7 bg-[#c9a45c]"></span>
                             Topik Informasi
                         </div>
-                        <span class="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">4 topik</span>
+                        <span class="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">2 topik</span>
                     </div>
 
                     <div class="space-y-3.5">
@@ -875,53 +816,6 @@
                             </span>
                         </a>
 
-                        <!-- KARTU 2 -->
-                        <a href="#berita" class="topic-card group flex items-center gap-4 rounded-2xl bg-[#fbf8f0] p-4 shadow-[0_20px_45px_-26px_rgba(0,0,0,.7)] ring-1 ring-black/[0.04] hover:bg-white sm:gap-5 sm:p-5">
-                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0e3b31]/[0.07] text-[#0e3b31] transition group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d] sm:h-12 sm:w-12">
-                                <svg class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M4 5h13a2 2 0 0 1 2 2v12H6a2 2 0 0 1-2-2V5Z"/>
-                                    <path d="M19 8h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-1"/>
-                                    <path d="M7.5 9h8M7.5 13h8M7.5 17h5"/>
-                                </svg>
-                            </span>
-                            <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-2">
-                                    <span class="text-[10px] font-extrabold tracking-[.18em] text-[#a17f3e]">02</span>
-                                    <span class="h-px w-4 bg-[#c9a45c]/50"></span>
-                                </span>
-                                <strong class="mt-0.5 block text-[15px] font-extrabold text-[#123b32]">Berita &amp; Kegiatan</strong>
-                                <span class="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-[#6b7873]">Publikasi kegiatan terbaru dari DPRD.</span>
-                            </span>
-                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#ddd0b6] bg-white/70 text-[#a17f3e] transition group-hover:translate-x-0.5 group-hover:border-[#0e3b31] group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d]">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                                    <path d="M5 12h14m-6-6 6 6-6 6"/>
-                                </svg>
-                            </span>
-                        </a>
-
-                        <!-- KARTU 3 -->
-                        <a href="{{ route('agenda.index') }}" class="topic-card group flex items-center gap-4 rounded-2xl bg-[#fbf8f0] p-4 shadow-[0_20px_45px_-26px_rgba(0,0,0,.7)] ring-1 ring-black/[0.04] hover:bg-white sm:gap-5 sm:p-5">
-                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0e3b31]/[0.07] text-[#0e3b31] transition group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d] sm:h-12 sm:w-12">
-                                <svg class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <rect x="3" y="5" width="18" height="16" rx="2"/>
-                                    <path d="M8 3v4M16 3v4M3 10h18M8 14h2M14 14h2M8 18h2"/>
-                                </svg>
-                            </span>
-                            <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-2">
-                                    <span class="text-[10px] font-extrabold tracking-[.18em] text-[#a17f3e]">03</span>
-                                    <span class="h-px w-4 bg-[#c9a45c]/50"></span>
-                                </span>
-                                <strong class="mt-0.5 block text-[15px] font-extrabold text-[#123b32]">Agenda Kegiatan</strong>
-                                <span class="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-[#6b7873]">Informasi jadwal kegiatan yang dipublikasikan.</span>
-                            </span>
-                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#ddd0b6] bg-white/70 text-[#a17f3e] transition group-hover:translate-x-0.5 group-hover:border-[#0e3b31] group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d]">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                                    <path d="M5 12h14m-6-6 6 6-6 6"/>
-                                </svg>
-                            </span>
-                        </a>
-
                         <!-- KARTU 4 -->
                         <a href="#dokumentasi" class="topic-card group flex items-center gap-4 rounded-2xl bg-[#fbf8f0] p-4 shadow-[0_20px_45px_-26px_rgba(0,0,0,.7)] ring-1 ring-black/[0.04] hover:bg-white sm:gap-5 sm:p-5">
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0e3b31]/[0.07] text-[#0e3b31] transition group-hover:bg-[#0e3b31] group-hover:text-[#e6c47d] sm:h-12 sm:w-12">
@@ -933,7 +827,7 @@
                             </span>
                             <span class="min-w-0 flex-1">
                                 <span class="flex items-center gap-2">
-                                    <span class="text-[10px] font-extrabold tracking-[.18em] text-[#a17f3e]">04</span>
+                                    <span class="text-[10px] font-extrabold tracking-[.18em] text-[#a17f3e]">02</span>
                                     <span class="h-px w-4 bg-[#c9a45c]/50"></span>
                                 </span>
                                 <strong class="mt-0.5 block text-[15px] font-extrabold text-[#123b32]">Galeri Dokumentasi</strong>
@@ -1047,21 +941,21 @@
                     <div class="flex items-start justify-between">
                         <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#c9a45c]/10 text-[#a17f3e]">
                             <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>
-                                <path d="M8 7h8M8 11h8"/>
+                                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                                <circle cx="9" cy="10" r="1.6"/>
+                                <path d="m4 18 5-5 4 4 3-3 4 4"/>
                             </svg>
                         </span>
                         <span class="text-[11px] font-extrabold tracking-[.18em] text-[#c9b992]">02</span>
                     </div>
 
-                    <h3 class="mt-10 text-xl font-extrabold tracking-tight text-[#123b32]">Informasi &amp; Berita</h3>
+                    <h3 class="mt-10 text-xl font-extrabold tracking-tight text-[#123b32]">Dokumentasi Kegiatan</h3>
                     <p class="mt-3 flex-1 text-[13px] leading-7 text-[#6b7873]">
-                        Temukan kabar kegiatan, agenda, pengumuman, dan informasi resmi seputar DPRD.
+                        Jelajahi album dan foto dokumentasi kegiatan resmi DPRD Kota Parepare.
                     </p>
 
-                    <a href="#berita" class="mt-auto inline-flex items-center gap-2 pt-8 text-[13px] font-extrabold text-[#0e3b31] transition hover:gap-3 hover:text-[#a17f3e]">
-                        Lihat informasi
+                    <a href="#dokumentasi" class="mt-auto inline-flex items-center gap-2 pt-8 text-[13px] font-extrabold text-[#0e3b31] transition hover:gap-3 hover:text-[#a17f3e]">
+                        Lihat dokumentasi
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                             <path d="M5 12h14m-6-6 6 6-6 6"/>
                         </svg>
@@ -1094,90 +988,6 @@
                     </a>
                 </article>
             </div>
-        </section>
-
-        <!-- BERITA & KEGIATAN -->
-        <section id="berita" class="container-public scroll-mt-28 py-24 lg:py-28">
-            <div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between sm:gap-12">
-                <x-public.section-header
-                    eyebrow="Berita & Kegiatan"
-                    title="Kabar terbaru dari DPRD"
-                    description="Publikasi kegiatan, pengumuman, dan informasi resmi DPRD Kota Parepare."
-                />
-
-                <a href="{{ route('berita.index') }}"
-                   class="inline-flex w-fit shrink-0 items-center gap-2 rounded-xl border border-[#0e3b31]/15 bg-white px-5 py-3 text-[13px] font-extrabold text-[#0e3b31] transition hover:-translate-y-0.5 hover:border-[#0e3b31] hover:bg-[#0e3b31] hover:text-[#e6c47d]">
-                    Lihat Semua Berita
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                        <path d="M5 12h14m-6-6 6 6-6 6"/>
-                    </svg>
-                </a>
-            </div>
-
-            @if ($latestNews->isEmpty())
-                <div class="mt-12 rounded-3xl border border-dashed border-[#d8c99f] bg-white/70 px-6 py-14 text-center">
-                    <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0e3b31]/5 text-[#0e3b31]">
-                        <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                            <path d="M4 5h13a2 2 0 0 1 2 2v12H6a2 2 0 0 1-2-2V5Z"/>
-                            <path d="M19 8h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-1"/>
-                            <path d="M7.5 9h8M7.5 13h8M7.5 17h5"/>
-                        </svg>
-                    </span>
-                    <h3 class="mt-5 text-lg font-extrabold text-[#123b32]">Belum ada berita terpublikasi</h3>
-                    <p class="mx-auto mt-2 max-w-md text-[13px] leading-6 text-[#6b7873]">
-                        Berita yang dipublikasikan melalui dashboard akan tampil otomatis di bagian ini.
-                    </p>
-                </div>
-            @else
-                <div class="mt-12 cards-grid">
-                    @foreach ($latestNews as $item)
-                        <article class="info-card group flex flex-col overflow-hidden rounded-3xl border border-[#e7dfd0] bg-white">
-                            <a href="{{ route('berita.show', $item->slug) }}" class="block aspect-[16/10] overflow-hidden bg-[#0e3b31]/5" aria-label="{{ $item->title }}">
-                                @if ($item->thumbnail)
-                                    <img src="{{ \Illuminate\Support\Facades\Storage::url($item->thumbnail) }}"
-                                         alt="{{ $item->title }}"
-                                         class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-                                         loading="lazy" decoding="async">
-                                @else
-                                    <span class="flex h-full w-full items-center justify-center text-[#0e3b31]/25">
-                                        <svg class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                                            <path d="M4 5h13a2 2 0 0 1 2 2v12H6a2 2 0 0 1-2-2V5Z"/>
-                                            <path d="M19 8h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-1"/>
-                                        </svg>
-                                    </span>
-                                @endif
-                            </a>
-
-                            <div class="flex flex-1 flex-col p-6">
-                                <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[.12em]">
-                                    <span class="rounded-full bg-[#f6ecd7] px-2.5 py-1 text-[#7a5e28]">
-                                        {{ \App\Models\LandingNews::CATEGORIES[$item->category] ?? ($item->category ? ucfirst($item->category) : 'Berita') }}
-                                    </span>
-                                    <span class="text-[#98a29d]">{{ $item->published_at?->translatedFormat('d M Y') }}</span>
-                                </div>
-
-                                <h3 class="mt-3 min-h-[3rem] text-[16px] font-extrabold leading-6 text-[#123b32]">
-                                    <a href="{{ route('berita.show', $item->slug) }}" class="line-clamp-2 transition hover:text-[#a17f3e]">
-                                        {{ $item->title }}
-                                    </a>
-                                </h3>
-
-                                <p class="mt-2 min-h-[3rem] text-[12.5px] leading-6 text-[#6b7873] line-clamp-3">
-                                    {{ \Illuminate\Support\Str::limit($item->excerpt ?: $item->content, 160) }}
-                                </p>
-
-                                <a href="{{ route('berita.show', $item->slug) }}"
-                                   class="mt-auto inline-flex items-center gap-2 pt-5 text-[12px] font-extrabold text-[#0e3b31] transition hover:gap-3 hover:text-[#a17f3e]">
-                                    Baca Selengkapnya
-                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                                        <path d="M5 12h14m-6-6 6 6-6 6"/>
-                                    </svg>
-                                </a>
-                            </div>
-                        </article>
-                    @endforeach
-                </div>
-            @endif
         </section>
 
         <!-- GALERI DOKUMENTASI -->
@@ -1583,7 +1393,7 @@
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
                         <a href="#beranda" class="transition hover:text-[#e6c47d]">Beranda</a>
                         <a href="#layanan" class="transition hover:text-[#e6c47d]">Layanan</a>
-                        <a href="#berita" class="transition hover:text-[#e6c47d]">Informasi</a>
+                        <a href="#dokumentasi" class="transition hover:text-[#e6c47d]">Dokumentasi</a>
                         <a href="#alur" class="transition hover:text-[#e6c47d]">Alur Pengajuan</a>
                         <a href="#faq" class="transition hover:text-[#e6c47d]">Pertanyaan Umum</a>
                     </div>
@@ -1592,11 +1402,6 @@
                 <div>
                     <h3 class="text-[11px] font-extrabold uppercase tracking-[.18em] text-[#e6c47d]">Portal</h3>
                     <div class="mt-4 flex flex-col gap-3 text-[13px] text-white/55">
-                        @auth
-                            <a href="{{ route('dashboard') }}" class="transition hover:text-[#e6c47d]">Dashboard Petugas</a>
-                        @else
-                            <a href="{{ route('login') }}" class="transition hover:text-[#e6c47d]">Portal Petugas</a>
-                        @endauth
                         <a href="{{ route('aspirasi.create') }}" class="transition hover:text-[#e6c47d]">Sampaikan Aspirasi</a>
                         <a href="#alur" class="transition hover:text-[#e6c47d]">Panduan Pengajuan</a>
                     </div>

@@ -19,6 +19,7 @@ use App\Http\Controllers\Portal\PenugasanController;
 use App\Http\Controllers\Portal\RdpDocumentController;
 use App\Http\Controllers\Portal\RdpMeetingController;
 use App\Http\Controllers\Portal\ReportController;
+use App\Http\Controllers\Portal\SimilarityGroupController;
 use App\Http\Controllers\Portal\StaffAccountController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicSite\AgendaPageController;
@@ -180,12 +181,37 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
                 ->whereNumber('entry')
                 ->name('entri.destroy');
 
+            Route::post('/versi/{version}/kriteria', [KamusAcuanController::class, 'storeKriteria'])
+                ->whereNumber('version')
+                ->name('kriteria.store');
+            Route::put('/kriteria/{criteria}', [KamusAcuanController::class, 'updateKriteria'])
+                ->whereNumber('criteria')
+                ->name('kriteria.update');
+            Route::delete('/kriteria/{criteria}', [KamusAcuanController::class, 'destroyKriteria'])
+                ->whereNumber('criteria')
+                ->name('kriteria.destroy');
+
             Route::get('/versi/{version}/impor', [KamusAcuanController::class, 'importForm'])
                 ->whereNumber('version')
                 ->name('versi.impor');
             Route::post('/versi/{version}/impor', [KamusAcuanController::class, 'import'])
                 ->whereNumber('version')
                 ->name('versi.impor.store');
+            Route::get('/versi/{version}/unggah', [KamusAcuanController::class, 'uploadForm'])
+                ->whereNumber('version')
+                ->name('versi.unggah');
+            Route::post('/versi/{version}/unggah', [KamusAcuanController::class, 'uploadPreview'])
+                ->whereNumber('version')
+                ->name('versi.unggah.preview');
+            Route::get('/versi/{version}/unggah/pratinjau', [KamusAcuanController::class, 'uploadPreviewShow'])
+                ->whereNumber('version')
+                ->name('versi.unggah.pratinjau');
+            Route::post('/versi/{version}/unggah/terapkan', [KamusAcuanController::class, 'uploadApply'])
+                ->whereNumber('version')
+                ->name('versi.unggah.apply');
+            Route::post('/versi/{version}/unggah/batal', [KamusAcuanController::class, 'uploadCancel'])
+                ->whereNumber('version')
+                ->name('versi.unggah.cancel');
             Route::get('/versi/{version}/ekspor', [KamusAcuanController::class, 'export'])
                 ->whereNumber('version')
                 ->name('versi.ekspor');
@@ -243,6 +269,10 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
     |--------------------------------------------------------------------------
     | Middleware role dan gate berlapis; staf pendamping tidak dapat membuka
     | modul ini meskipun mengetik URL secara langsung.
+    |
+    | Berita & Agenda tidak lagi ditautkan dari navigasi Manajemen Landing
+    | Page. Route dan datanya dipertahankan sebagai arsip; hanya Dokumentasi
+    | Kegiatan yang tampil pada menu pengelolaan.
     */
     Route::middleware(['role:administrator', 'can:manage-landing-page'])
         ->prefix('landing-page')
@@ -425,6 +455,12 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
             ->name('penugasan.bukti');
 
         Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');
+        Route::post('/laporan/kemiripan/{laporan}/keputusan', [SimilarityGroupController::class, 'decideForReport'])
+            ->whereNumber('laporan')
+            ->name('laporan.kemiripan.decide');
+        Route::post('/laporan/kemiripan/periksa/{member}', [SimilarityGroupController::class, 'recheck'])
+            ->whereNumber('member')
+            ->name('laporan.kemiripan.recheck');
         Route::get('/laporan/{laporan}', [ReportController::class, 'show'])
             ->whereNumber('laporan')
             ->name('laporan.show');
@@ -436,12 +472,17 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
             ->name('laporan.lampiran.lihat');
 
         Route::middleware('role:administrator')->group(function () {
+            Route::get('/laporan/unread-counts', [ReportController::class, 'unreadCounts'])
+                ->name('laporan.unread-counts');
             Route::patch('/laporan/{laporan}/persetujuan', [ReportController::class, 'approve'])
                 ->whereNumber('laporan')
                 ->name('laporan.persetujuan');
             Route::patch('/laporan/{laporan}/status', [ReportController::class, 'updateStatus'])
                 ->whereNumber('laporan')
                 ->name('laporan.status.update');
+            Route::delete('/laporan/{laporan}', [ReportController::class, 'destroy'])
+                ->whereNumber('laporan')
+                ->name('laporan.destroy');
             Route::get('/laporan/{laporan}/analisis', [AnalysisController::class, 'show'])
                 ->whereNumber('laporan')
                 ->name('laporan.analisis');

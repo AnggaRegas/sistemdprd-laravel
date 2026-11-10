@@ -1,16 +1,16 @@
 @php
     $autoHasil = $report->kamusHasil;
     $manualTerakhir = $report->kamusVerifikasi->first();
-    $kandidat = $autoHasil?->kandidat_urut ?? [];
+    $terdaftar = $report->kamus_status === \App\Models\LaporanKamusHasil::STATUS_SESUAI;
+    $sudahDiperiksa = $autoHasil !== null || $report->kamus_status !== null;
 @endphp
 
 <div class="app-card mb-3" id="kamus-acuan">
     <div class="app-card-header">
         <div>
-            <h2 class="app-card-title">Hasil Pemeriksaan Kamus Acuan</h2>
-            <p class="app-card-subtitle">Hasil otomatis dan keputusan manual Super Admin disimpan terpisah agar riwayat tetap utuh.</p>
+            <h2 class="app-card-title">Kamus Acuan</h2>
+            <p class="app-card-subtitle">Status pendaftaran aspirasi pada Kamus Acuan yang berlaku.</p>
         </div>
-        <span class="status-badge status-{{ $report->kamus_status_tone }}">{{ $report->kamus_status_label }}</span>
     </div>
 
     <div class="app-card-body">
@@ -35,111 +35,32 @@
             </div>
         @endif
 
-        <div class="row g-3">
-            <div class="col-md-6">
-                <dl class="detail-list">
-                    <div class="detail-row">
-                        <dt>Status akhir</dt>
-                        <dd><span class="status-badge status-{{ $report->kamus_status_tone }}">{{ $report->kamus_status_label }}</span></dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Hasil otomatis terakhir</dt>
-                        <dd>{{ $report->kamus_status_otomatis_label }}</dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Tahun kamus</dt>
-                        <dd>{{ $report->kamus_tahun_label }}</dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Entri acuan</dt>
-                        <dd>{{ $report->kamus_entri_label }}</dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Prioritas rekomendasi</dt>
-                        <dd>{{ $report->kamus_prioritas_label }}</dd>
-                    </div>
-                </dl>
-            </div>
-
-            <div class="col-md-6">
-                <dl class="detail-list">
-                    <div class="detail-row">
-                        <dt>Diperiksa otomatis</dt>
-                        <dd>{{ $report->kamus_diperiksa_at ? \App\Support\PortalData::dateTime($report->kamus_diperiksa_at) : '—' }}</dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Diverifikasi manual</dt>
-                        <dd>
-                            @if ($report->kamus_diverifikasi_at)
-                                {{ \App\Support\PortalData::dateTime($report->kamus_diverifikasi_at) }}
-                                <span class="cell-sub d-block">{{ $report->kamusDiverifikasiOleh?->name ?: 'Super Admin' }}</span>
-                            @else
-                                Belum ada keputusan manual
-                            @endif
-                        </dd>
-                    </div>
-                    <div class="detail-row">
-                        <dt>Catatan verifikasi</dt>
-                        <dd class="text-break">{{ $report->kamus_catatan_verifikasi ?: '—' }}</dd>
-                    </div>
-                </dl>
+        <div class="kamus-status-box {{ $terdaftar ? 'is-registered' : 'is-unregistered' }}">
+            <span class="kamus-status-icon" aria-hidden="true">
+                <i class="{{ $terdaftar ? 'ri-shield-check-line' : 'ri-shield-cross-line' }}"></i>
+            </span>
+            <div class="kamus-status-body">
+                <span class="kamus-status-badge">
+                    {{ $terdaftar ? 'Terdaftar di Kamus Acuan' : 'Tidak Terdaftar di Kamus Acuan' }}
+                </span>
+                <p class="kamus-status-meta">
+                    @if (! $sudahDiperiksa)
+                        Aspirasi ini belum diperiksa terhadap Kamus Acuan.
+                    @elseif ($report->kamus_diperiksa_at || $report->kamus_diverifikasi_at)
+                        Terakhir diperbarui
+                        {{ \App\Support\PortalData::dateTime($report->kamus_diverifikasi_at ?? $report->kamus_diperiksa_at) }}
+                        @if ($report->kamus_tahun)
+                            · Kamus {{ $report->kamus_tahun }}
+                        @endif
+                        @if ($terdaftar && $report->kamus_entri_id)
+                            · {{ $report->kamus_entri_label }}
+                        @endif
+                    @else
+                        Hasil pemeriksaan Kamus Acuan sudah tersimpan.
+                    @endif
+                </p>
             </div>
         </div>
-
-        @if ($autoHasil)
-            <div class="soft-divider"></div>
-            <h3 class="app-card-title mb-2">Mengapa hasil ini muncul?</h3>
-            <p style="font-size: 12px; line-height: 1.8;">{{ $autoHasil->alasan ?: 'Tidak ada penjelasan tersimpan.' }}</p>
-
-            <div class="d-flex flex-wrap gap-2 mb-3">
-                <span class="status-badge status-neutral">Metode: {{ $autoHasil->metode_label }}</span>
-                <span class="status-badge status-info">{{ $autoHasil->jumlah_kandidat }} kandidat</span>
-                <span class="status-badge status-{{ $autoHasil->status_tone }}">{{ $autoHasil->status_label }}</span>
-            </div>
-
-            @if ($kandidat === [])
-                <p class="cell-muted mb-0">Tidak ada kandidat entri yang cocok pada pemeriksaan terakhir.</p>
-            @else
-                <div class="table-responsive">
-                    <table class="table-modern mb-0" style="min-width: 680px;">
-                        <thead>
-                            <tr>
-                                <th scope="col">Kode</th>
-                                <th scope="col">Klasifikasi</th>
-                                <th scope="col">Komisi</th>
-                                <th scope="col">Skor</th>
-                                <th scope="col">Istilah cocok</th>
-                                <th scope="col">Prioritas</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($kandidat as $candidate)
-                                <tr>
-                                    <td><strong>{{ $candidate['kode'] ?? '—' }}</strong></td>
-                                    <td>{{ $candidate['klasifikasi'] ?? '—' }}</td>
-                                    <td><span class="cell-muted">{{ $candidate['komisi'] ?? '—' }}</span></td>
-                                    <td><span class="status-badge status-info">{{ $candidate['skor'] ?? 0 }}</span></td>
-                                    <td>
-                                        @foreach (array_slice($candidate['matched_terms'] ?? [], 0, 6) as $term)
-                                            <span class="cell-sub d-block">
-                                                {{ $term['term'] ?? '—' }}
-                                                <span class="cell-muted">· {{ $term['sumber'] ?? 'Kata kunci' }} · bobot {{ $term['weight'] ?? 0 }} · {{ $term['occurrences'] ?? 0 }}x</span>
-                                            </span>
-                                        @endforeach
-                                    </td>
-                                    <td>{{ $candidate['prioritas'] ?: 'Belum ditetapkan' }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        @else
-            <div class="demo-note mt-3 mb-0">
-                <i class="ri-information-line" aria-hidden="true"></i>
-                <div>Laporan ini belum memiliki hasil pemeriksaan Kamus Acuan. Pemeriksaan otomatis berjalan saat aspirasi masuk; Super Admin juga dapat menjalankannya ulang dari panel ini.</div>
-            </div>
-        @endif
 
         @if ($isAdministrator)
             <div class="soft-divider"></div>
@@ -209,57 +130,24 @@
         @else
             <div class="demo-note mt-3 mb-0">
                 <i class="ri-lock-2-line" aria-hidden="true"></i>
-                <div>Hasil Kamus Acuan hanya dapat diverifikasi oleh Super Admin. Riwayat tetap dapat Anda lihat di panel ini.</div>
+                <div>Hasil Kamus Acuan hanya dapat diverifikasi oleh Super Admin.</div>
             </div>
-        @endif
-
-        <div class="soft-divider"></div>
-
-        <h3 class="app-card-title mb-2">Riwayat Pemeriksaan Otomatis</h3>
-        @if ($report->kamusHasilList->isEmpty())
-            <p class="cell-muted mb-0">Belum ada pemeriksaan otomatis yang tersimpan.</p>
-        @else
-            <ul class="timeline mb-0">
-                @foreach ($report->kamusHasilList as $hasil)
-                    <li class="timeline-item {{ $loop->first ? 'is-active' : 'is-done' }}">
-                        <strong>{{ $hasil->status_label }}</strong>
-                        <p>
-                            Kamus {{ $hasil->tahun_label }} · {{ $hasil->jumlah_kandidat }} kandidat
-                            · {{ \App\Support\PortalData::dateTime($hasil->diperiksa_at) }}
-                        </p>
-                        <span>{{ $hasil->alasan ?: 'Tidak ada penjelasan tersimpan.' }}</span>
-                    </li>
-                @endforeach
-            </ul>
-        @endif
-
-        <div class="soft-divider"></div>
-
-        <h3 class="app-card-title mb-2">Riwayat Verifikasi Manual</h3>
-        @if ($report->kamusVerifikasi->isEmpty())
-            <p class="cell-muted mb-0">Belum ada keputusan manual dari Super Admin.</p>
-        @else
-            <ul class="timeline mb-0">
-                @foreach ($report->kamusVerifikasi as $verifikasi)
-                    <li class="timeline-item is-done">
-                        <strong>{{ $verifikasi->keputusan_label }}</strong>
-                        <p>
-                            {{ $verifikasi->status_sebelum ? (\App\Models\LaporanKamusHasil::STATUS_LABELS[$verifikasi->status_sebelum] ?? $verifikasi->status_sebelum) : 'BELUM DIPERIKSA' }}
-                            → {{ $verifikasi->status_sesudah_label }}
-                            · {{ \App\Support\PortalData::dateTime($verifikasi->diverifikasi_at) }}
-                            @if ($verifikasi->verifikator)
-                                oleh {{ $verifikasi->verifikator->name }}
-                            @endif
-                        </p>
-                        @if ($verifikasi->entri_snapshot)
-                            <span>Entri: {{ $verifikasi->entri_snapshot['kode'] ?? '—' }} — {{ $verifikasi->entri_snapshot['klasifikasi'] ?? '—' }}</span>
-                        @endif
-                        @if ($verifikasi->catatan)
-                            <p class="mt-1">{{ $verifikasi->catatan }}</p>
-                        @endif
-                    </li>
-                @endforeach
-            </ul>
         @endif
     </div>
 </div>
+
+@push('styles')
+    <style>
+        .kamus-status-box { display: flex; align-items: flex-start; gap: 14px; padding: 18px; border-radius: 18px; border: 1px solid #e5e9e6; }
+        .kamus-status-box.is-registered { border-color: #bfe3cc; background: #f1faf4; }
+        .kamus-status-box.is-unregistered { border-color: #e4e0d8; background: #f7f6f3; }
+        .kamus-status-icon { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 14px; font-size: 22px; flex-shrink: 0; }
+        .kamus-status-box.is-registered .kamus-status-icon { background: #dcf3e4; color: #14663f; }
+        .kamus-status-box.is-unregistered .kamus-status-icon { background: #ece8e1; color: #8a5b5b; }
+        .kamus-status-body { min-width: 0; }
+        .kamus-status-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 800; letter-spacing: .01em; }
+        .kamus-status-box.is-registered .kamus-status-badge { background: #14663f; color: #ffffff; }
+        .kamus-status-box.is-unregistered .kamus-status-badge { background: #b45b5b; color: #ffffff; }
+        .kamus-status-meta { margin: 8px 0 0; font-size: 11.5px; line-height: 1.7; color: #6b7873; }
+    </style>
+@endpush

@@ -141,6 +141,167 @@
         <div class="app-card mb-3">
             <div class="app-card-header">
                 <div>
+                    <h2 class="app-card-title">Kriteria &amp; Bobot Perhitungan (SPK)</h2>
+                    <p class="app-card-subtitle">
+                        Parameter ini dipakai langsung oleh mesin Kamus Acuan saat menghitung skor aspirasi.
+                        Terakhir diperbarui:
+                        <strong>{{ $kriteriaTerakhirDiperbarui ? \App\Support\PortalData::dateTime($kriteriaTerakhirDiperbarui) : '—' }}</strong>
+                    </p>
+                </div>
+                <span class="status-badge status-info">{{ $kriteria->count() }} kriteria</span>
+            </div>
+
+            <div class="app-card-body">
+                @if ($kriteria->isEmpty())
+                    <x-admin.empty-state
+                        icon="ri-equalizer-line"
+                        title="Belum ada kriteria"
+                        description="Tambahkan kriteria perhitungan agar bobot SPK dapat diatur tanpa mengubah kode program."
+                    />
+                @else
+                    <div class="table-responsive">
+                        <table class="table-modern kamus-kriteria-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Faktor</th>
+                                    <th scope="col">Nama tampilan</th>
+                                    <th scope="col">Bobot</th>
+                                    <th scope="col">Satuan</th>
+                                    <th scope="col">Aktif</th>
+                                    <th scope="col"><span class="visually-hidden">Tindakan</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($kriteria as $item)
+                                    <tr>
+                                        <td>
+                                            <strong>{{ $item->faktor_label }}</strong>
+                                            <span class="cell-sub d-block" style="font-size: 10px;">{{ $item->kode }}</span>
+                                        </td>
+                                        <td>
+                                            <input form="kriteriaUpdate{{ $item->id }}"
+                                                   type="text"
+                                                   name="nama"
+                                                   value="{{ $item->nama }}"
+                                                   maxlength="120"
+                                                   class="form-control form-control-sm"
+                                                   required>
+                                        </td>
+                                        <td style="width: 120px;">
+                                            <input form="kriteriaUpdate{{ $item->id }}"
+                                                   type="number"
+                                                   name="bobot"
+                                                   value="{{ rtrim(rtrim(number_format($item->bobot, 3, '.', ''), '0'), '.') }}"
+                                                   step="0.001"
+                                                   min="0"
+                                                   max="999"
+                                                   class="form-control form-control-sm"
+                                                   required>
+                                        </td>
+                                        <td><span class="cell-muted">{{ $item->satuan ?: '—' }}</span></td>
+                                        <td>
+                                            <input form="kriteriaUpdate{{ $item->id }}" type="hidden" name="is_active" value="0">
+                                            <input form="kriteriaUpdate{{ $item->id }}"
+                                                   type="checkbox"
+                                                   name="is_active"
+                                                   value="1"
+                                                   class="form-check-input"
+                                                   @checked($item->is_active)>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                                <button type="submit"
+                                                        form="kriteriaUpdate{{ $item->id }}"
+                                                        class="btn btn-emerald btn-sm">
+                                                    Simpan
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-soft btn-sm text-danger"
+                                                        data-confirm-action
+                                                        data-confirm-title="Hapus kriteria ini?"
+                                                        data-confirm-message="Kriteria {{ $item->nama }} dihapus. Perhitungan berikutnya kembali memakai nilai bawaan."
+                                                        data-confirm-label="Hapus kriteria"
+                                                        data-confirm-form="#deleteKriteria{{ $item->id }}">
+                                                    Hapus
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                @foreach ($kriteria as $item)
+                    <form id="kriteriaUpdate{{ $item->id }}" method="POST"
+                          action="{{ route('kamus.kriteria.update', $item) }}" class="d-none">
+                        @csrf
+                        @method('PUT')
+                        <textarea name="keterangan">{{ $item->keterangan }}</textarea>
+                    </form>
+                    <form id="deleteKriteria{{ $item->id }}" method="POST"
+                          action="{{ route('kamus.kriteria.destroy', $item) }}" class="d-none">
+                        @csrf
+                        @method('DELETE')
+                    </form>
+                @endforeach
+
+                @if ($kriteriaFaktorTersedia->isNotEmpty())
+                    <div class="kamus-kriteria-add">
+                        <h3 class="app-card-title mb-1">Tambah Kriteria</h3>
+                        <p class="cell-muted mb-3" style="font-size: 11px;">
+                            Pilih faktor perhitungan yang belum dipakai pada versi {{ $selectedVersion->tahun }}.
+                            Perubahan berlaku pada pemeriksaan berikutnya dan tidak mengubah hasil historis.
+                        </p>
+
+                        <form method="POST" action="{{ route('kamus.kriteria.store', $selectedVersion) }}" class="row g-2 align-items-end" data-kriteria-form>
+                            @csrf
+                            <div class="col-md-4">
+                                <label class="form-label" for="kriteriaKode">Faktor perhitungan</label>
+                                <select id="kriteriaKode" name="kode" class="form-select" required data-kriteria-select>
+                                    @foreach ($kriteriaFaktorTersedia as $kode => $faktor)
+                                        <option value="{{ $kode }}"
+                                                data-nama="{{ $faktor['nama'] }}"
+                                                data-bobot="{{ $faktor['bobot'] }}"
+                                                data-keterangan="{{ $faktor['keterangan'] }}">
+                                            {{ $faktor['nama'] }} ({{ $faktor['satuan'] }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="kriteriaNama">Nama tampilan</label>
+                                <input id="kriteriaNama" type="text" name="nama" maxlength="120" class="form-control" data-kriteria-nama>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="kriteriaBobot">Bobot</label>
+                                <input id="kriteriaBobot" type="number" name="bobot" step="0.001" min="0" max="999" class="form-control" required data-kriteria-bobot>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-emerald w-100">
+                                    <i class="ri-add-line" aria-hidden="true"></i>
+                                    Tambah Kriteria
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="kriteriaKeterangan">Keterangan</label>
+                                <textarea id="kriteriaKeterangan" name="keterangan" rows="2" maxlength="1000" class="form-control" data-kriteria-keterangan></textarea>
+                            </div>
+                        </form>
+                    </div>
+                @else
+                    <div class="demo-note mt-3 mb-0">
+                        <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                        <div>Seluruh faktor perhitungan yang didukung sudah tersedia pada versi ini.</div>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="app-card mb-3">
+            <div class="app-card-header">
+                <div>
                     <h2 class="app-card-title">Entri Kamus {{ $selectedVersion->tahun }}</h2>
                     <p class="app-card-subtitle">
                         {{ number_format($entries?->total() ?? 0, 0, ',', '.') }} entri pada versi {{ $selectedVersion->nama }}.
@@ -153,6 +314,10 @@
                     <a href="{{ route('kamus.entri.create', $selectedVersion) }}" class="btn btn-emerald btn-sm">
                         <i class="ri-add-line" aria-hidden="true"></i>
                         Tambah Entri
+                    </a>
+                    <a href="{{ route('kamus.versi.unggah', $selectedVersion) }}" class="btn btn-emerald btn-sm">
+                        <i class="ri-upload-cloud-2-line" aria-hidden="true"></i>
+                        Unggah Kamus
                     </a>
                     <a href="{{ route('kamus.versi.impor', $selectedVersion) }}" class="btn btn-outline-soft btn-sm">
                         <i class="ri-upload-2-line" aria-hidden="true"></i>
@@ -277,5 +442,47 @@
         .kamus-entry-table { min-width: 860px; }
         .kamus-entry-table th, .kamus-entry-table td { padding: 14px 12px; font-size: 12.5px; vertical-align: middle; }
         .table-modern tr.is-selected { background: #f3f8f5; }
+        .kamus-kriteria-table { min-width: 780px; }
+        .kamus-kriteria-table th, .kamus-kriteria-table td { padding: 12px; font-size: 12.5px; vertical-align: middle; }
+        .kamus-kriteria-table .form-control-sm { min-width: 150px; }
+        .kamus-kriteria-add { margin-top: 18px; padding: 18px; border: 1px dashed #d7e2dc; border-radius: 16px; background: #fbfcfa; }
     </style>
+@endpush
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-kriteria-form]').forEach(function (form) {
+                var select = form.querySelector('[data-kriteria-select]');
+                var nama = form.querySelector('[data-kriteria-nama]');
+                var bobot = form.querySelector('[data-kriteria-bobot]');
+                var keterangan = form.querySelector('[data-kriteria-keterangan]');
+
+                function sync() {
+                    var option = select && select.options[select.selectedIndex];
+
+                    if (!option) {
+                        return;
+                    }
+
+                    if (nama) {
+                        nama.value = option.dataset.nama || '';
+                    }
+
+                    if (bobot) {
+                        bobot.value = option.dataset.bobot || '';
+                    }
+
+                    if (keterangan) {
+                        keterangan.value = option.dataset.keterangan || '';
+                    }
+                }
+
+                if (select) {
+                    select.addEventListener('change', sync);
+                    sync();
+                }
+            });
+        });
+    </script>
 @endpush

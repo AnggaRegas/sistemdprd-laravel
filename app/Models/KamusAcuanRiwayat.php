@@ -28,6 +28,9 @@ class KamusAcuanRiwayat extends Model
         'entri_diaktifkan' => 'Entri diaktifkan',
         'entri_dihapus' => 'Entri dihapus',
         'impor' => 'Impor entri',
+        'kriteria_dibuat' => 'Kriteria ditambahkan',
+        'kriteria_diubah' => 'Kriteria diubah',
+        'kriteria_dihapus' => 'Kriteria dihapus',
     ];
 
     protected $fillable = [

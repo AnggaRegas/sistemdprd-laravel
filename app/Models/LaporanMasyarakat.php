@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class LaporanMasyarakat extends Model
 {
@@ -89,6 +91,47 @@ class LaporanMasyarakat extends Model
         'Kecamatan Soreang',
     ];
 
+    /*
+     * Status keputusan Super Admin terhadap hasil deteksi kemiripan.
+     * Status ini terpisah dari status alur aspirasi (baru, ditugaskan, dst.)
+     * dan tidak pernah menghapus data aspirasi.
+     */
+    public const SIMILARITY_STATUS_UTAMA = 'utama';
+
+    public const SIMILARITY_STATUS_DUPLIKAT = 'duplikat';
+
+    public const SIMILARITY_STATUS_DIGABUNGKAN = 'digabungkan';
+
+    public const SIMILARITY_STATUS_DIPISAH = 'dipisah';
+
+    public const SIMILARITY_STATUS_MENUNGGU = 'menunggu';
+
+    public const SIMILARITY_STATUS_LABELS = [
+        self::SIMILARITY_STATUS_UTAMA => 'Aspirasi Utama',
+        self::SIMILARITY_STATUS_DUPLIKAT => 'Duplikat Terverifikasi',
+        self::SIMILARITY_STATUS_DIGABUNGKAN => 'Digabungkan ke Aspirasi Utama',
+        self::SIMILARITY_STATUS_DIPISAH => 'Tetap Diproses Terpisah',
+        self::SIMILARITY_STATUS_MENUNGGU => 'Menunggu Verifikasi',
+    ];
+
+    public const SIMILARITY_LEVEL_TINGGI = 'tinggi';
+
+    public const SIMILARITY_LEVEL_SEDANG = 'sedang';
+
+    public const SIMILARITY_LEVEL_TIDAK_ADA = 'tidak_ada';
+
+    public const SIMILARITY_LEVEL_LABELS = [
+        self::SIMILARITY_LEVEL_TINGGI => 'Kemiripan Tinggi',
+        self::SIMILARITY_LEVEL_SEDANG => 'Kemiripan Sedang',
+        self::SIMILARITY_LEVEL_TIDAK_ADA => 'Tidak Ada Kemiripan',
+    ];
+
+    public const SIMILARITY_LEVEL_TONES = [
+        self::SIMILARITY_LEVEL_TINGGI => 'danger',
+        self::SIMILARITY_LEVEL_SEDANG => 'warning',
+        self::SIMILARITY_LEVEL_TIDAK_ADA => 'neutral',
+    ];
+
     public const KLASIFIKASI_DIREKOMENDASIKAN = 'direkomendasikan';
 
     public const KLASIFIKASI_PERLU_DITINJAU = 'perlu_ditinjau';
@@ -136,6 +179,13 @@ class LaporanMasyarakat extends Model
         'lampiran_mime',
         'lampiran_size',
         'dprd_member_id',
+        'similarity_group_id',
+        'duplicate_of_id',
+        'similarity_status',
+        'similarity_level',
+        'similarity_reviewed_at',
+        'similarity_reviewed_by',
+        'similarity_note',
         'assigned_to',
         'assigned_at',
         'disetujui_oleh',
@@ -161,6 +211,9 @@ class LaporanMasyarakat extends Model
         'kamus_diverifikasi_at' => 'datetime',
         'komisi_final_ditetapkan_at' => 'datetime',
         'disetujui_at' => 'datetime',
+        'duplicate_of_id' => 'integer',
+        'similarity_group_id' => 'integer',
+        'similarity_reviewed_at' => 'datetime',
     ];
 
     public function member(): BelongsTo
@@ -218,6 +271,78 @@ class LaporanMasyarakat extends Model
     public function comparedSimilarityResults(): HasMany
     {
         return $this->hasMany(LaporanSimilarityResult::class, 'compared_laporan_masyarakat_id');
+    }
+
+    public function similarityGroup(): BelongsTo
+    {
+        return $this->belongsTo(LaporanSimilarityGroup::class, 'similarity_group_id');
+    }
+
+    public function similarityMembership(): HasOne
+    {
+        return $this->hasOne(LaporanSimilarityGroupMember::class, 'laporan_masyarakat_id');
+    }
+
+    public function duplicateOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'duplicate_of_id')->withTrashed();
+    }
+
+    public function duplicates(): HasMany
+    {
+        return $this->hasMany(self::class, 'duplicate_of_id');
+    }
+
+    public function similarityReviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'similarity_reviewed_by');
+    }
+
+    /**
+     * Label status keputusan kemiripan. Null berarti belum diputuskan.
+     */
+    public function getSimilarityStatusLabelAttribute(): string
+    {
+        return self::SIMILARITY_STATUS_LABELS[$this->similarity_status] ?? 'Belum Ditinjau';
+    }
+
+    /**
+     * Label tingkat kemiripan otomatis. Null berarti belum diperiksa.
+     */
+    public function getSimilarityLevelLabelAttribute(): string
+    {
+        return self::SIMILARITY_LEVEL_LABELS[$this->similarity_level] ?? 'Belum Diperiksa';
+    }
+
+    public function getSimilarityLevelToneAttribute(): string
+    {
+        return self::SIMILARITY_LEVEL_TONES[$this->similarity_level] ?? 'info';
+    }
+
+    public function getIsDuplicateMergedAttribute(): bool
+    {
+        return $this->duplicate_of_id !== null
+            || in_array($this->similarity_status, [
+                self::SIMILARITY_STATUS_DUPLIKAT,
+                self::SIMILARITY_STATUS_DIGABUNGKAN,
+            ], true);
+    }
+
+    /**
+     * Aspirasi yang sudah digabungkan ke aspirasi utama tidak boleh masuk
+     * lagi ke antrean penugasan sebagai pekerjaan baru.
+     */
+    public function scopeSiapDitugaskan(Builder $query): Builder
+    {
+        return $query
+            ->whereNull('duplicate_of_id')
+            ->where(function (Builder $query) {
+                $query->whereNull('similarity_status')
+                    ->orWhereNotIn('similarity_status', [
+                        self::SIMILARITY_STATUS_DUPLIKAT,
+                        self::SIMILARITY_STATUS_DIGABUNGKAN,
+                    ]);
+            });
     }
 
     public function kamusHasil(): BelongsTo
@@ -481,12 +606,114 @@ class LaporanMasyarakat extends Model
         return $counts;
     }
 
+    public static function notificationKeyFor(int|string $id): string
+    {
+        return 'laporan-baru-'.$id;
+    }
+
+    public static function markAsReadFor(User $user, int|self $report): void
+    {
+        $reportId = $report instanceof self ? $report->id : (int) $report;
+
+        NotificationRead::query()->updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'notification_key' => self::notificationKeyFor($reportId),
+            ],
+            ['read_at' => now()]
+        );
+    }
+
+    /**
+     * @param  array<int, int>|null  $reportIds
+     * @return array<int, int>
+     */
+    public static function readReportIdsFor(User $user, ?array $reportIds = null): array
+    {
+        $query = NotificationRead::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('read_at')
+            ->where('notification_key', 'LIKE', 'laporan-baru-%');
+
+        if ($reportIds !== null) {
+            if ($reportIds === []) {
+                return [];
+            }
+
+            $keys = array_map(static fn ($id) => self::notificationKeyFor($id), $reportIds);
+            $query->whereIn('notification_key', $keys);
+        }
+
+        return $query->pluck('notification_key')
+            ->map(static fn (string $key) => (int) Str::after($key, 'laporan-baru-'))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    public static function unreadNewQueryFor(User $user): Builder
+    {
+        $readIds = self::readReportIdsFor($user);
+
+        $query = static::query()
+            ->whereIn('status', [
+                self::STATUS_BARU,
+                self::STATUS_MENUNGGU_PENUGASAN,
+            ])
+            ->siapDitugaskan();
+
+        if ($readIds !== []) {
+            $query->whereNotIn('id', $readIds);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    public static function unreadNewCountsByMemberFor(User $user): Collection
+    {
+        if (! $user->isAdministrator()) {
+            return collect();
+        }
+
+        return self::unreadNewQueryFor($user)
+            ->whereNotNull('dprd_member_id')
+            ->groupBy('dprd_member_id')
+            ->selectRaw('dprd_member_id, COUNT(*) as unread_total')
+            ->pluck('unread_total', 'dprd_member_id');
+    }
+
+    /**
+     * @param  array<int, int>  $reportIds
+     * @return array<int, int>
+     */
+    public static function unreadReportIdsFor(User $user, array $reportIds): array
+    {
+        if ($reportIds === []) {
+            return [];
+        }
+
+        $readIds = array_flip(self::readReportIdsFor($user, $reportIds));
+
+        return static::query()
+            ->whereIn('id', $reportIds)
+            ->whereIn('status', [
+                self::STATUS_BARU,
+                self::STATUS_MENUNGGU_PENUGASAN,
+            ])
+            ->siapDitugaskan()
+            ->pluck('id')
+            ->filter(static fn ($id) => ! isset($readIds[(int) $id]))
+            ->values()
+            ->all();
+    }
+
     public static function badgeCountFor(User $user): int
     {
         if ($user->isAdministrator()) {
-            return static::query()
-                ->where('status', self::STATUS_MENUNGGU_PENUGASAN)
-                ->count();
+            return static::unreadNewQueryFor($user)->count();
         }
 
         return static::query()

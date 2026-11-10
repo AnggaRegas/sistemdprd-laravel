@@ -69,7 +69,7 @@ class LandingPageManagementTest extends TestCase
 
         $this->get(route('berita.index'))->assertOk()->assertSee($news->title);
         $this->get(route('berita.show', $news->slug))->assertOk()->assertSee($news->title);
-        $this->get('/')->assertOk()->assertSee($news->title);
+        $this->get('/')->assertOk()->assertDontSee($news->title);
 
         // Draft tidak tampil di publik.
         $draft = LandingNews::query()->create([
@@ -302,5 +302,27 @@ class LandingPageManagementTest extends TestCase
             ->assertRedirect(route('landing.agendas.index'));
 
         $this->assertDatabaseMissing('landing_agendas', ['id' => $upcoming->id]);
+    }
+
+    public function test_landing_management_menu_only_keeps_documentation(): void
+    {
+        $admin = User::factory()->administrator()->create();
+
+        $response = $this->actingAs($admin)->get(route('dashboard'));
+
+        $response->assertOk()
+            ->assertSee(route('landing.galleries.index'), false)
+            ->assertDontSee(route('landing.news.index'), false)
+            ->assertDontSee(route('landing.agendas.index'), false);
+    }
+
+    public function test_public_landing_page_removes_news_and_agenda_sections(): void
+    {
+        $this->get('/')->assertOk()
+            ->assertDontSee('Kabar terbaru dari DPRD')
+            ->assertDontSee('Agenda Kegiatan')
+            ->assertDontSee('id="berita"', false)
+            ->assertSee('Dokumentasi Kegiatan')
+            ->assertSee('Lihat Semua Dokumentasi');
     }
 }

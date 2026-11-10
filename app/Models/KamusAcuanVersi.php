@@ -48,6 +48,11 @@ class KamusAcuanVersi extends Model
         return $this->entri()->where('is_active', true);
     }
 
+    public function kriteria(): HasMany
+    {
+        return $this->hasMany(KamusKriteria::class, 'kamus_acuan_versi_id');
+    }
+
     public function riwayat(): HasMany
     {
         return $this->hasMany(KamusAcuanRiwayat::class, 'kamus_acuan_versi_id');

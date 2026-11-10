@@ -7,6 +7,7 @@ use App\Models\DprdCommission;
 use App\Models\KamusAcuanEntri;
 use App\Models\KamusAcuanRiwayat;
 use App\Models\KamusAcuanVersi;
+use App\Models\KamusKriteria;
 use App\Models\LaporanKamusHasil;
 use App\Models\LaporanKamusVerifikasi;
 use App\Models\LaporanMasyarakat;
@@ -94,10 +95,12 @@ class KamusAcuanService
             ->orderBy('kode')
             ->get();
 
+        $criteria = $this->criteriaForVersion($version);
+
         $candidates = [];
 
         foreach ($entries as $entry) {
-            $scored = $this->scoreEntry($entry, $normalized);
+            $scored = $this->scoreEntry($entry, $normalized, $criteria);
 
             if ($scored['skor'] <= 0) {
                 continue;
@@ -124,8 +127,8 @@ class KamusAcuanService
             return [$b['skor'], $a['kode']] <=> [$a['skor'], $b['kode']];
         });
 
-        $minimumLength = (int) config('kamus_acuan.minimum_text_length', 12);
-        $minimumTokens = (int) config('kamus_acuan.minimum_tokens', 3);
+        $minimumLength = (int) ($criteria['panjang_minimum_teks'] ?? config('kamus_acuan.minimum_text_length', 12));
+        $minimumTokens = (int) ($criteria['minimal_jumlah_kata'] ?? config('kamus_acuan.minimum_tokens', 3));
         $tokens = $normalized === '' ? [] : explode(' ', $normalized);
         $teksTerlaluPendek = mb_strlen($normalized) < $minimumLength
             || count($tokens) < $minimumTokens;
@@ -146,7 +149,7 @@ class KamusAcuanService
 
         $top = $candidates[0];
         $topEntry = $entries->firstWhere('id', $top['entri_id']);
-        $minimumScore = (float) config('kamus_acuan.minimum_score', 4);
+        $minimumScore = (float) ($criteria['skor_minimum'] ?? config('kamus_acuan.minimum_score', 4));
 
         if (count($candidates) > 1) {
             return [
@@ -471,8 +474,27 @@ class KamusAcuanService
                         ]);
                         $copied++;
                     }
+
+                    /*
+                     * Kriteria/bobot perhitungan ikut disalin agar versi baru
+                     * memakai parameter SPK yang sama sampai diubah admin.
+                     */
+                    foreach ($source->kriteria()->ordered()->get() as $criteria) {
+                        KamusKriteria::query()->create([
+                            'kamus_acuan_versi_id' => $version->id,
+                            'kode' => $criteria->kode,
+                            'nama' => $criteria->nama,
+                            'bobot' => $criteria->bobot,
+                            'satuan' => $criteria->satuan,
+                            'keterangan' => $criteria->keterangan,
+                            'is_active' => $criteria->is_active,
+                            'urutan' => $criteria->urutan,
+                        ]);
+                    }
                 }
             }
+
+            $this->seedDefaultCriteria($version, $user);
 
             $this->log($version->id, null, 'versi_dibuat', null, $this->versionSnapshot($version), $user, $copied > 0 ? 'Versi dibuat dan menyalin '.$copied.' entri.' : 'Versi kamus dibuat.');
 
@@ -886,28 +908,47 @@ class KamusAcuanService
     }
 
     /**
+     * Hitung skor satu entri memakai kriteria/bobot versi kamus.
+     *
+     * Rumus: jumlah (kemunculan × bobot istilah × pengali kriteria).
+     * Pengali kata kunci/sinonim dan bonus frasa berasal dari tabel
+     * kamus_kriteria, bukan dari nilai hardcode.
+     *
+     * @param  array<string, float>  $criteria
      * @return array{skor: float, matched_terms: array<int, array<string, mixed>>}
      */
-    private function scoreEntry(KamusAcuanEntri $entry, string $normalizedText): array
+    private function scoreEntry(KamusAcuanEntri $entry, string $normalizedText, array $criteria = []): array
     {
         $score = 0.0;
         $matches = [];
 
+        $keywordMultiplier = max(0.0, (float) ($criteria['bobot_kata_kunci'] ?? 1.0));
+        $synonymMultiplier = max(0.0, (float) ($criteria['bobot_sinonim'] ?? 0.8));
+        $phraseMultiplier = max(0.0, (float) ($criteria['bobot_frasa'] ?? 1.0));
+        $maxOccurrences = max(1, (int) round((float) ($criteria['maks_kemunculan']
+            ?? config('kamus_acuan.max_occurrences', 3))));
+
         foreach ($entry->matchingTerms() as $term) {
-            $occurrences = $this->countOccurrences($normalizedText, $term['term']);
+            $occurrences = $this->countOccurrences($normalizedText, $term['term'], $maxOccurrences);
 
             if ($occurrences === 0) {
                 continue;
             }
 
-            $subtotal = $occurrences * $term['weight'];
+            $sourceMultiplier = ($term['sumber'] ?? '') === 'sinonim'
+                ? $synonymMultiplier
+                : $keywordMultiplier;
+            $termMultiplier = str_contains($term['term'], ' ') ? $phraseMultiplier : 1.0;
+            $effectiveWeight = $term['weight'] * $sourceMultiplier * $termMultiplier;
+            $subtotal = $occurrences * $effectiveWeight;
             $score += $subtotal;
 
             $matches[] = [
                 'term' => $term['term'],
                 'weight' => $term['weight'],
+                'effective_weight' => round($effectiveWeight, 3),
                 'occurrences' => $occurrences,
-                'subtotal' => $subtotal,
+                'subtotal' => round($subtotal, 3),
                 'sumber' => $term['sumber'],
             ];
         }
@@ -920,7 +961,7 @@ class KamusAcuanService
         ];
     }
 
-    private function countOccurrences(string $normalizedText, string $term): int
+    private function countOccurrences(string $normalizedText, string $term, ?int $max = null): int
     {
         if ($normalizedText === '' || $term === '') {
             return 0;
@@ -929,9 +970,188 @@ class KamusAcuanService
         $needle = ' '.$term.' ';
         $haystack = ' '.$normalizedText.' ';
         $count = substr_count($haystack, $needle);
-        $max = max(1, (int) config('kamus_acuan.max_occurrences', 3));
+        $max ??= max(1, (int) config('kamus_acuan.max_occurrences', 3));
 
-        return min($count, $max);
+        return min($count, max(1, $max));
+    }
+
+    /**
+     * Nilai kriteria aktif untuk satu versi. Nilai bawaan dipakai sebagai
+     * dasar, lalu ditimpa baris aktif pada tabel kamus_kriteria.
+     *
+     * @return array<string, float>
+     */
+    public function criteriaForVersion(?KamusAcuanVersi $version): array
+    {
+        $values = KamusKriteria::defaultValues();
+
+        if (! $version) {
+            return $values;
+        }
+
+        $rows = KamusKriteria::query()
+            ->where('kamus_acuan_versi_id', $version->id)
+            ->active()
+            ->get(['kode', 'bobot']);
+
+        foreach ($rows as $row) {
+            if (array_key_exists($row->kode, KamusKriteria::FAKTORS)) {
+                $values[$row->kode] = (float) $row->bobot;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Pastikan versi memiliki baris kriteria bawaan. Aman dipanggil
+     * berulang: baris yang sudah ada tidak ditimpa.
+     */
+    public function seedDefaultCriteria(KamusAcuanVersi $version, ?User $user = null): void
+    {
+        $existing = KamusKriteria::query()
+            ->where('kamus_acuan_versi_id', $version->id)
+            ->pluck('kode')
+            ->all();
+
+        foreach (KamusKriteria::defaults() as $row) {
+            if (in_array($row['kode'], $existing, true)) {
+                continue;
+            }
+
+            KamusKriteria::query()->create([
+                'kamus_acuan_versi_id' => $version->id,
+            ] + $row);
+        }
+
+        if ($existing === []) {
+            $this->log(
+                $version->id,
+                null,
+                'kriteria_dibuat',
+                null,
+                ['kriteria' => count(KamusKriteria::defaults())],
+                $user,
+                'Kriteria dan bobot bawaan ditambahkan untuk perhitungan SPK.'
+            );
+        }
+    }
+
+    public function createCriteria(KamusAcuanVersi $version, array $data, User $user): KamusKriteria
+    {
+        $kode = (string) $data['kode'];
+
+        if (! array_key_exists($kode, KamusKriteria::FAKTORS)) {
+            throw ValidationException::withMessages([
+                'kode' => 'Faktor perhitungan tidak dikenal.',
+            ]);
+        }
+
+        if (KamusKriteria::query()
+            ->where('kamus_acuan_versi_id', $version->id)
+            ->where('kode', $kode)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'kode' => 'Kriteria ini sudah ada pada versi kamus tersebut.',
+            ]);
+        }
+
+        $faktor = KamusKriteria::FAKTORS[$kode];
+        $urutan = (int) KamusKriteria::query()
+            ->where('kamus_acuan_versi_id', $version->id)
+            ->max('urutan');
+
+        return DB::transaction(function () use ($version, $data, $user, $kode, $faktor, $urutan) {
+            $criteria = KamusKriteria::query()->create([
+                'kamus_acuan_versi_id' => $version->id,
+                'kode' => $kode,
+                'nama' => $this->nullableString($data['nama'] ?? '') ?? $faktor['nama'],
+                'bobot' => (float) ($data['bobot'] ?? $faktor['bobot']),
+                'satuan' => $faktor['satuan'],
+                'keterangan' => $this->nullableString($data['keterangan'] ?? '') ?? $faktor['keterangan'],
+                'is_active' => $this->parseBoolean($data['is_active'] ?? true, true),
+                'urutan' => $urutan + 1,
+            ]);
+
+            $this->log(
+                $version->id,
+                null,
+                'kriteria_dibuat',
+                null,
+                ['kriteria' => $this->criteriaSnapshot($criteria)],
+                $user,
+                'Kriteria '.$criteria->nama.' ditambahkan.'
+            );
+
+            return $criteria;
+        });
+    }
+
+    public function updateCriteria(KamusKriteria $criteria, array $data, User $user): KamusKriteria
+    {
+        return DB::transaction(function () use ($criteria, $data, $user) {
+            $before = $this->criteriaSnapshot($criteria);
+
+            $criteria->update([
+                'nama' => $this->nullableString($data['nama'] ?? '') ?? $criteria->nama,
+                'bobot' => array_key_exists('bobot', $data)
+                    ? (float) $data['bobot']
+                    : $criteria->bobot,
+                'keterangan' => array_key_exists('keterangan', $data)
+                    ? $this->nullableString($data['keterangan'])
+                    : $criteria->keterangan,
+                'is_active' => array_key_exists('is_active', $data)
+                    ? $this->parseBoolean($data['is_active'], true)
+                    : $criteria->is_active,
+            ]);
+
+            $this->log(
+                $criteria->kamus_acuan_versi_id,
+                null,
+                'kriteria_diubah',
+                $before,
+                $this->criteriaSnapshot($criteria->refresh()),
+                $user,
+                'Kriteria '.$criteria->nama.' diperbarui; perhitungan SPK berikutnya memakai nilai baru.'
+            );
+
+            return $criteria;
+        });
+    }
+
+    public function deleteCriteria(KamusKriteria $criteria, User $user): void
+    {
+        DB::transaction(function () use ($criteria, $user) {
+            $before = $this->criteriaSnapshot($criteria);
+            $versionId = $criteria->kamus_acuan_versi_id;
+            $nama = $criteria->nama;
+
+            $criteria->delete();
+
+            $this->log(
+                $versionId,
+                null,
+                'kriteria_dihapus',
+                $before,
+                null,
+                $user,
+                'Kriteria '.$nama.' dihapus; perhitungan kembali memakai nilai bawaan.'
+            );
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function criteriaSnapshot(KamusKriteria $criteria): array
+    {
+        return [
+            'id' => $criteria->id,
+            'kode' => $criteria->kode,
+            'nama' => $criteria->nama,
+            'bobot' => (float) $criteria->bobot,
+            'is_active' => (bool) $criteria->is_active,
+        ];
     }
 
     private function deactivateVersions(?int $exceptId = null, ?User $user = null): void
@@ -1156,6 +1376,14 @@ class KamusAcuanService
 
     private function parseBoolean(mixed $value, bool $default = false): bool
     {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if ($value === null) {
+            return $default;
+        }
+
         $value = strtolower(trim((string) $value));
 
         if ($value === '') {

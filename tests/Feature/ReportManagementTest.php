@@ -76,9 +76,10 @@ class ReportManagementTest extends TestCase
             ->assertDontSee('Anggota Lain Ujung');
     }
 
-    public function test_administrator_folder_shows_duplicate_badge_and_detail_hides_similarity_card(): void
+    public function test_administrator_folder_shows_similarity_label_and_detail_shows_similarity_card(): void
     {
-        config()->set('aspiration_similarity.threshold', 0.80);
+        config()->set('aspiration_similarity.high_threshold', 0.80);
+        config()->set('aspiration_similarity.medium_threshold', 0.55);
 
         $admin = $this->administrator();
         $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Duplikat Uji']);
@@ -88,9 +89,11 @@ class ReportManagementTest extends TestCase
             'ringkasan' => 'Laporan berpotensi duplikat',
             'dprd_member_id' => $member->id,
             'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+            'similarity_level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
         ]);
 
         $previous = $this->report([
+            'nomor_tiket' => 'LPR-DUP-000',
             'ringkasan' => 'Aspirasi terdahulu yang mirip',
             'dprd_member_id' => $member->id,
             'status' => LaporanMasyarakat::STATUS_SELESAI,
@@ -101,6 +104,16 @@ class ReportManagementTest extends TestCase
             'laporan_masyarakat_id' => $report->id,
             'compared_laporan_masyarakat_id' => $previous->id,
             'similarity_score' => 0.95,
+            'similarity_level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
+            'evidence' => [
+                'cosine_similarity' => 0.95,
+                'context_factor' => 1.0,
+                'final_score' => 0.95,
+                'shared_terms' => [
+                    ['term' => 'jalan', 'weight_left' => 0.4, 'weight_right' => 0.4, 'contribution' => 0.16],
+                ],
+                'reasons' => ['Wilayah permasalahan sama.'],
+            ],
             'checked_at' => now(),
         ]);
 
@@ -108,16 +121,19 @@ class ReportManagementTest extends TestCase
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
             ->assertSee('Laporan berpotensi duplikat')
-            ->assertSee('Berpotensi Duplikat')
-            ->assertDontSee('Kemiripan');
+            ->assertSee('Aspirasi Mirip Ditemukan')
+            ->assertSee('Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.')
+            ->assertSee('Bandingkan');
 
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
             ->assertSee('Laporan berpotensi duplikat')
-            ->assertDontSee('Hasil Deteksi Kemiripan')
-            ->assertDontSee('Kemiripan 95,0%')
-            ->assertDontSee('TF-IDF dan Cosine Similarity');
+            ->assertSee('Kemiripan Aspirasi')
+            ->assertSee('Aspirasi Mirip Ditemukan')
+            ->assertSee('LPR-DUP-000')
+            ->assertSee('95,0%')
+            ->assertDontSee('Tidak Ada Kemiripan');
     }
 
     public function test_administrator_can_approve_report_and_auto_dispose_to_member_staff(): void

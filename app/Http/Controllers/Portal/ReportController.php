@@ -9,13 +9,17 @@ use App\Models\AktivitasSistem;
 use App\Models\DprdMember;
 use App\Models\LaporanMasyarakat;
 use App\Models\LaporanPenugasan;
+use App\Models\LaporanSimilarityGroup;
+use App\Models\LaporanSimilarityGroupMember;
 use App\Models\LaporanSimilarityResult;
 use App\Models\KamusAcuanVersi;
 use App\Models\LaporanKamusHasil;
 use App\Models\LaporanKamusVerifikasi;
 use App\Models\User;
+use App\Support\AdminNotification;
 use App\Support\PortalPresenter;
 use App\Support\SafeReturnUrl;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +28,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class ReportController extends Controller
 {
@@ -132,7 +137,10 @@ class ReportController extends Controller
 
     public function administratorIndex(Request $request): View
     {
+        $user = $request->user();
         $selectedMemberId = (int) $request->query('anggota');
+        $memberUnreadCounts = LaporanMasyarakat::unreadNewCountsByMemberFor($user);
+        $unreadReportLookup = [];
 
         $filters = [
             'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
@@ -142,7 +150,7 @@ class ReportController extends Controller
 
         $membersQuery = DprdMember::query()
             ->where('is_active', true)
-            ->withCount(['laporan' => fn ($query) => $query->withTrashed()])
+            ->withCount('laporan')
             ->orderBy('nama_lengkap');
 
         if ($selectedMemberId === 0 && $filters['q'] !== '') {
@@ -154,7 +162,6 @@ class ReportController extends Controller
         $selectedMember = null;
         $reports = null;
         $filteredTotal = 0;
-        $duplicateIds = collect();
         $returnUrl = $request->fullUrl();
 
         if ($selectedMemberId > 0) {
@@ -164,7 +171,6 @@ class ReportController extends Controller
                 ->firstOrFail();
 
             $query = $selectedMember->laporan()
-                ->withTrashed()
                 ->with(['member', 'kamusEntri']);
 
             if ($filters['q'] !== '') {
@@ -200,24 +206,42 @@ class ReportController extends Controller
                 ->paginate(10, ['*'], 'page')
                 ->withQueryString();
 
-            $duplicateIds = LaporanSimilarityResult::query()
-                ->whereIn('laporan_masyarakat_id', $reports->getCollection()->pluck('id'))
-                ->diAtasAmbang()
-                ->pluck('laporan_masyarakat_id')
-                ->unique();
+            $reports->getCollection()->load([
+                'similarityGroup:id,kode,status,main_laporan_id',
+                'similarityGroup.members:id,laporan_similarity_group_id,laporan_masyarakat_id,peran',
+                'duplicateOf:id,nomor_tiket,ringkasan',
+                'similarityResults.comparedLaporan',
+                'comparedSimilarityResults.laporan',
+            ]);
+
+            $similarityMatches = $this->similarityMatchesFor($reports->getCollection());
+            $similarityPanels = $reports->getCollection()
+                ->mapWithKeys(fn (LaporanMasyarakat $report) => [
+                    $report->id => $this->similarityPanelFor($report, $similarityMatches->get($report->id, [])),
+                ]);
+
+            $unreadReportIds = LaporanMasyarakat::unreadReportIdsFor(
+                $user,
+                $reports->getCollection()->pluck('id')->all()
+            );
+            $unreadReportLookup = array_flip($unreadReportIds);
         }
 
         return view('reports.admin_index', [
             'members' => $members,
+            'memberUnreadCounts' => $memberUnreadCounts,
+            'unreadReportLookup' => $unreadReportLookup,
             'selectedMember' => $selectedMember,
             'reports' => $reports,
             'filteredTotal' => $filteredTotal,
-            'duplicateIds' => $duplicateIds,
+            'similarityMatches' => $similarityMatches ?? collect(),
+            'similarityPanels' => $similarityPanels ?? collect(),
             'searchQuery' => $filters['q'],
             'filters' => $filters,
             'kamusStatuses' => LaporanKamusHasil::STATUS_LABELS,
             'kamusTahunOptions' => $this->kamusTahunOptions(),
-            'hasKamusFilter' => $filters['kamus_status'] !== '' || $filters['kamus_tahun'] !== '',
+            'hasKamusFilter' => $filters['kamus_status'] !== ''
+                || $filters['kamus_tahun'] !== '',
             'hasFolderQuery' => $selectedMemberId > 0
                 || $filters['q'] !== ''
                 || $filters['kamus_status'] !== ''
@@ -230,12 +254,28 @@ class ReportController extends Controller
     {
         $user = $request->user();
 
+        if ($user) {
+            LaporanMasyarakat::markAsReadFor($user, $laporan);
+
+            if ($user->isStaff() && (int) $laporan->assigned_to === (int) $user->id) {
+                $assignedStamp = $laporan->assigned_at?->getTimestamp() ?? $laporan->id;
+                AdminNotification::markRead($user, 'laporan-ditugaskan-'.$laporan->id.'-'.$assignedStamp);
+            }
+        }
+
         $report = LaporanMasyarakat::query()
             ->visibleTo($user)
             ->with([
                 'member',
                 'assignee',
                 'approvedBy',
+                'similarityGroup.members.laporan',
+                'similarityGroup.decisions.user',
+                'duplicateOf',
+                'duplicates',
+                'similarityResults.comparedLaporan.similarityGroup',
+                'comparedSimilarityResults.laporan.similarityGroup',
+                'similarityReviewedBy',
                 'kamusHasil.versi',
                 'kamusHasil.entriUtama',
                 'kamusHasil.pemeriksa',
@@ -317,7 +357,234 @@ class ReportController extends Controller
             'kamusEntries' => $kamusEntries,
             'kamusStatusLabels' => LaporanKamusHasil::STATUS_LABELS,
             'kamusVerificationLabels' => LaporanKamusVerifikasi::KEPUTUSAN_LABELS,
+            'similarityMatches' => $this->similarityMatchesFor(collect([$report]))->get($report->id, []),
             'returnUrl' => SafeReturnUrl::reportsIndex($request->query('return_to'), $request),
+        ]);
+    }
+
+    /**
+     * Hapus satu aspirasi (soft delete).
+     *
+     * Penghapusan menjaga relasi tetap konsisten:
+     * - keanggotaan kelompok kemiripan dibersihkan;
+     * - bila aspirasi utama dihapus, anggota lain dipromosikan sebagai
+     *   aspirasi utama pengganti;
+     * - bila anggota kelompok tersisa kurang dari dua, kelompok dibubarkan;
+     * - hasil perhitungan kemiripan yang melibatkan aspirasi ini dihapus.
+     *
+     * Data pelapor, isi aspirasi, dan lampiran tetap tersimpan pada baris
+     * soft delete sehingga masih dapat ditelusuri melalui aktivitas sistem.
+     */
+    public function destroy(Request $request, LaporanMasyarakat $laporan): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user?->isAdministrator(), 403);
+
+        $validated = $request->validate([
+            'alasan' => ['nullable', 'string', 'max:500'],
+            'return_to' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $returnUrl = SafeReturnUrl::reportsIndex($validated['return_to'] ?? null, $request);
+        $ticket = $laporan->nomor_tiket;
+        $groupKode = null;
+
+        try {
+            DB::transaction(function () use ($laporan, $user, $validated, &$groupKode): void {
+                $report = LaporanMasyarakat::query()
+                    ->withTrashed()
+                    ->lockForUpdate()
+                    ->findOrFail($laporan->id);
+
+                if ($report->trashed()) {
+                    throw ValidationException::withMessages([
+                        'laporan' => 'Aspirasi ini sudah dihapus sebelumnya.',
+                    ]);
+                }
+
+                $group = $report->similarity_group_id
+                    ? LaporanSimilarityGroup::query()
+                        ->lockForUpdate()
+                        ->find($report->similarity_group_id)
+                    : null;
+
+                $replacementId = null;
+
+                if ($group) {
+                    $groupKode = $group->kode;
+
+                    $activeMemberIds = LaporanSimilarityGroupMember::query()
+                        ->where('laporan_similarity_group_id', $group->id)
+                        ->where('laporan_masyarakat_id', '<>', $report->id)
+                        ->orderBy('id')
+                        ->pluck('laporan_masyarakat_id')
+                        ->map(fn ($id) => (int) $id)
+                        ->all();
+
+                    $activeMemberIds = LaporanMasyarakat::query()
+                        ->whereIn('id', $activeMemberIds)
+                        ->orderBy('id')
+                        ->pluck('id')
+                        ->map(fn ($id) => (int) $id)
+                        ->all();
+
+                    $isMain = (int) $group->main_laporan_id === (int) $report->id
+                        || $report->similarity_status === LaporanMasyarakat::SIMILARITY_STATUS_UTAMA;
+
+                    LaporanSimilarityGroupMember::query()
+                        ->where('laporan_masyarakat_id', $report->id)
+                        ->delete();
+
+                    if ($activeMemberIds === []) {
+                        $this->dissolveSimilarityGroup($group, $user);
+                    } elseif ($isMain) {
+                        $replacementId = $activeMemberIds[0];
+
+                        $group->forceFill([
+                            'main_laporan_id' => $replacementId,
+                            'decided_by' => $user->id,
+                            'decided_at' => now(),
+                            'catatan' => $this->appendGroupNote(
+                                $group->catatan,
+                                'Aspirasi utama '.$report->nomor_tiket.' dihapus; '
+                                    .'aspirasi #'.$replacementId.' dipromosikan sebagai aspirasi utama pengganti.'
+                            ),
+                        ])->save();
+
+                        LaporanSimilarityGroupMember::query()
+                            ->where('laporan_similarity_group_id', $group->id)
+                            ->where('laporan_masyarakat_id', $replacementId)
+                            ->update([
+                                'peran' => LaporanSimilarityGroupMember::PERAN_UTAMA,
+                                'decided_by' => $user->id,
+                                'decided_at' => now(),
+                            ]);
+
+                        LaporanMasyarakat::withTrashed()
+                            ->whereKey($replacementId)
+                            ->update([
+                                'similarity_status' => LaporanMasyarakat::SIMILARITY_STATUS_UTAMA,
+                                'similarity_reviewed_by' => $user->id,
+                                'similarity_reviewed_at' => now(),
+                            ]);
+                    } elseif (count($activeMemberIds) < 2) {
+                        $this->dissolveSimilarityGroup($group, $user);
+                    }
+                }
+
+                LaporanSimilarityResult::query()
+                    ->where(function ($query) use ($report) {
+                        $query->where('laporan_masyarakat_id', $report->id)
+                            ->orWhere('compared_laporan_masyarakat_id', $report->id);
+                    })
+                    ->delete();
+
+                $duplicates = LaporanMasyarakat::query()
+                    ->withTrashed()
+                    ->where('duplicate_of_id', $report->id);
+
+                if ($replacementId !== null) {
+                    $duplicates->update(['duplicate_of_id' => $replacementId]);
+                } else {
+                    $duplicates->update([
+                        'duplicate_of_id' => null,
+                        'similarity_status' => null,
+                        'similarity_level' => null,
+                        'similarity_reviewed_by' => null,
+                        'similarity_reviewed_at' => null,
+                    ]);
+                }
+
+                $report->forceFill([
+                    'similarity_group_id' => null,
+                    'duplicate_of_id' => null,
+                ])->save();
+
+                AktivitasSistem::catat(
+                    'laporan.dihapus',
+                    $user,
+                    $report,
+                    [
+                        'nomor_tiket' => $report->nomor_tiket,
+                        'pelapor_nama' => $report->pelapor_nama,
+                        'dprd_member_id' => $report->dprd_member_id,
+                        'similarity_group' => $groupKode,
+                        'aspirasi_utama_pengganti' => $replacementId,
+                        'alasan' => $validated['alasan'] ?? null,
+                    ],
+                    'Aspirasi '.$report->nomor_tiket.' dihapus oleh '.$user->name.'.'
+                );
+
+                $report->delete();
+            });
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->to($returnUrl)
+                ->with('error', 'Aspirasi '.$ticket.' gagal dihapus. Silakan coba lagi.');
+        }
+
+        return redirect()
+            ->to($returnUrl)
+            ->with('success', 'Aspirasi '.$ticket.' berhasil dihapus.');
+    }
+
+    /**
+     * Bubarkan kelompok kemiripan karena anggota aktifnya kurang dari dua.
+     */
+    private function dissolveSimilarityGroup(LaporanSimilarityGroup $group, ?User $user = null): void
+    {
+        LaporanSimilarityGroupMember::query()
+            ->where('laporan_similarity_group_id', $group->id)
+            ->delete();
+
+        LaporanMasyarakat::withTrashed()
+            ->where('similarity_group_id', $group->id)
+            ->update([
+                'similarity_group_id' => null,
+                'duplicate_of_id' => null,
+                'similarity_status' => null,
+                'similarity_level' => null,
+                'similarity_reviewed_by' => null,
+                'similarity_reviewed_at' => null,
+            ]);
+
+        $group->forceFill([
+            'status' => LaporanSimilarityGroup::STATUS_DIBUBARKAN,
+            'main_laporan_id' => null,
+            'decided_by' => $user?->id,
+            'decided_at' => now(),
+            'catatan' => $this->appendGroupNote(
+                $group->catatan,
+                'Kelompok dibubarkan otomatis karena anggota aktif tersisa kurang dari dua.'
+            ),
+        ])->save();
+    }
+
+    private function appendGroupNote(?string $existing, string $note): string
+    {
+        $existing = trim((string) $existing);
+
+        return $existing === '' ? $note : $existing."\n".$note;
+    }
+
+    /**
+     * Hitungan aspirasi baru yang belum dibaca per anggota dan total untuk Super Admin.
+     * Digunakan oleh polling pembaruan otomatis di latar belakang.
+     */
+    public function unreadCounts(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user?->isAdministrator(), 403);
+
+        return response()->json([
+            'total' => LaporanMasyarakat::badgeCountFor($user),
+            'members' => LaporanMasyarakat::unreadNewCountsByMemberFor($user)->mapWithKeys(
+                fn ($count, $memberId) => [(string) $memberId => (int) $count]
+            )->all(),
         ]);
     }
 
@@ -351,6 +618,13 @@ class ReportController extends Controller
             if (! $report->dprd_member_id) {
                 throw ValidationException::withMessages([
                     'approval' => 'Laporan belum memiliki anggota DPRD tujuan sehingga tidak dapat didisposisikan.',
+                ])->errorBag('approval');
+            }
+
+            if ($report->is_duplicate_merged) {
+                throw ValidationException::withMessages([
+                    'approval' => 'Laporan ini sudah digabungkan ke aspirasi utama dan tidak perlu ditugaskan kembali. '
+                        .'Proses aspirasi utama melalui laporan utama.',
                 ])->errorBag('approval');
             }
 
@@ -403,6 +677,7 @@ class ReportController extends Controller
             }
 
             $report->save();
+            LaporanMasyarakat::markAsReadFor($administrator, $report);
 
             AktivitasSistem::catat(
                 'laporan.disetujui',
@@ -613,6 +888,7 @@ class ReportController extends Controller
             }
 
             $report->save();
+            LaporanMasyarakat::markAsReadFor($administrator, $report);
 
             if (in_array($newStatus, [
                 LaporanMasyarakat::STATUS_SELESAI,
@@ -671,8 +947,195 @@ class ReportController extends Controller
         return PortalPresenter::statusValue($value, LaporanMasyarakat::STATUS_LABELS) ?? '';
     }
 
-    private function kamusStatusFilter(mixed $value): string
+    /**
+     * Susun daftar aspirasi mirip untuk ditampilkan pada tabel dan modal.
+     *
+     * Hanya pasangan dengan kemiripan tinggi (lolos ambang lokasi DAN ambang
+     * permasalahan) yang dikembalikan. Pasangan di bawah ambang tidak pernah
+     * menghasilkan label di daftar aspirasi.
+     *
+     * @param  \Illuminate\Support\Collection<int, LaporanMasyarakat>  $reports
+     * @return \Illuminate\Support\Collection<int, array<int, array<string, mixed>>>
+     */
+    private function similarityMatchesFor($reports)
     {
+        return $reports->mapWithKeys(function (LaporanMasyarakat $report) {
+            $matches = collect();
+
+            foreach ($report->similarityResults as $result) {
+                if (! $result->comparedLaporan) {
+                    continue;
+                }
+
+                $row = $this->similarityMatchRow($result, $result->comparedLaporan);
+
+                if ($row !== null) {
+                    $matches->push($row);
+                }
+            }
+
+            foreach ($report->comparedSimilarityResults as $result) {
+                if (! $result->laporan) {
+                    continue;
+                }
+
+                $row = $this->similarityMatchRow($result, $result->laporan);
+
+                if ($row !== null) {
+                    $matches->push($row);
+                }
+            }
+
+            $unique = $matches
+                ->groupBy('id')
+                ->map(fn ($group) => $group->sortByDesc('score')->first())
+                ->sortByDesc('score')
+                ->values()
+                ->all();
+
+            return [$report->id => $unique];
+        });
+    }
+
+    /**
+     * Satu baris perbandingan. Mengembalikan null bila pasangan tidak
+     * memenuhi kriteria kemiripan tinggi.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function similarityMatchRow(LaporanSimilarityResult $result, LaporanMasyarakat $other): ?array
+    {
+        $evidence = is_array($result->evidence) ? $result->evidence : [];
+        $locationScore = $evidence['location_score'] ?? null;
+        $problemScore = $evidence['problem_score'] ?? null;
+
+        $level = $result->similarity_level;
+
+        if ($level === null) {
+            $level = $this->passesHighSimilarity($locationScore, $problemScore)
+                ? LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI
+                : null;
+        }
+
+        if ($level !== LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI) {
+            return null;
+        }
+
+        return [
+            'id' => $other->id,
+            'nomor_tiket' => $other->nomor_tiket,
+            'ringkasan' => $other->ringkasan,
+            'isi' => $other->isi,
+            'pelapor_nama' => $other->pelapor_nama,
+            'pelapor_alamat' => $other->pelapor_alamat,
+            'kecamatan' => $other->kecamatan,
+            'kategori' => $other->kategori,
+            'tanggal' => $other->tanggal_laporan?->toDateString(),
+            'status_label' => $other->status_label,
+            'similarity_status' => $other->similarity_status,
+            'similarity_status_label' => $other->similarity_status_label,
+            'score' => round((float) $result->similarity_score, 6),
+            'location_score' => $locationScore !== null ? round((float) $locationScore, 6) : null,
+            'problem_score' => $problemScore !== null ? round((float) $problemScore, 6) : null,
+            'level' => $level,
+            'level_label' => LaporanMasyarakat::SIMILARITY_LEVEL_LABELS[$level] ?? 'Kemiripan Tinggi',
+            'evidence' => $result->evidence,
+            'reasons' => $evidence['reasons'] ?? [],
+            'group_kode' => $other->similarityGroup?->kode,
+        ];
+    }
+
+    private function passesHighSimilarity(
+        mixed $locationScore,
+        mixed $problemScore
+    ): bool {
+        /*
+         * Baris lama tanpa bukti skor ganda tidak pernah dianggap mirip:
+         * label hanya boleh muncul bila lokasi DAN inti permasalahan lolos
+         * ambangnya masing-masing.
+         */
+        if ($locationScore === null || $problemScore === null) {
+            return false;
+        }
+
+        return (float) $locationScore >= (float) config('aspiration_similarity.location_threshold', 0.70)
+            && (float) $problemScore >= (float) config('aspiration_similarity.problem_threshold', 0.70);
+    }
+
+    /**
+     * Data lengkap untuk modal perbandingan satu aspirasi. Modal selalu
+     * memuat aspirasi yang sedang dibuka dan seluruh kandidat mirip sehingga
+     * Super Admin dapat memilih aspirasi utama tanpa berpindah halaman.
+     *
+     * @param  array<int, array<string, mixed>>  $matches
+     * @return array<string, mixed>
+     */
+    private function similarityPanelFor(LaporanMasyarakat $report, array $matches): array
+    {
+        $current = $this->similarityPanelReport($report, null, true);
+        $previous = collect($matches)
+            ->map(fn (array $match) => $this->similarityPanelReport($report, $match, false))
+            ->sortByDesc('score')
+            ->values()
+            ->all();
+
+        $highestScore = (float) collect($previous)->max('score');
+        $matchIds = collect($matches)->pluck('id')->map(fn ($id) => (int) $id);
+
+        return [
+            'report_id' => $report->id,
+            'group_kode' => $report->similarityGroup?->kode,
+            'group_status' => $report->similarityGroup?->status,
+            'main_laporan_id' => $report->similarityGroup?->main_laporan_id,
+            'is_decided' => $report->similarityGroup?->decided_at !== null,
+            'current' => $current,
+            'matches' => $previous,
+            'total' => count($previous),
+            'highest_score' => $highestScore,
+            'current_is_newest' => $matchIds->isEmpty()
+                || (int) $report->id > (int) $matchIds->max(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $match
+     * @return array<string, mixed>
+     */
+    private function similarityPanelReport(LaporanMasyarakat $current, ?array $match, bool $isCurrent): array
+    {
+        return [
+            'id' => $isCurrent ? $current->id : $match['id'],
+            'nomor_tiket' => $isCurrent ? $current->nomor_tiket : $match['nomor_tiket'],
+            'ringkasan' => $isCurrent ? $current->ringkasan : $match['ringkasan'],
+            'isi' => $isCurrent ? $current->isi : $match['isi'],
+            'pelapor_nama' => $isCurrent ? $current->pelapor_nama : $match['pelapor_nama'],
+            'pelapor_alamat' => $isCurrent ? $current->pelapor_alamat : $match['pelapor_alamat'],
+            'kecamatan' => $isCurrent ? $current->kecamatan : $match['kecamatan'],
+            'kategori' => $isCurrent ? $current->kategori : ($match['kategori'] ?? null),
+            'kategori_label' => $isCurrent
+                ? (LaporanMasyarakat::KATEGORI_OPTIONS[$current->kategori] ?? $current->kategori)
+                : ($match['kategori']
+                    ? (LaporanMasyarakat::KATEGORI_OPTIONS[$match['kategori']] ?? $match['kategori'])
+                    : null),
+            'status_label' => $isCurrent ? $current->status_label : ($match['status_label'] ?? null),
+            'tanggal' => $isCurrent
+                ? $current->tanggal_laporan?->toDateString()
+                : $match['tanggal'],
+            'is_current' => $isCurrent,
+            'is_main' => $isCurrent
+                ? $current->similarity_status === LaporanMasyarakat::SIMILARITY_STATUS_UTAMA
+                : ($match['similarity_status'] ?? null) === LaporanMasyarakat::SIMILARITY_STATUS_UTAMA,
+            'similarity_status' => $isCurrent ? $current->similarity_status : ($match['similarity_status'] ?? null),
+            'similarity_status_label' => $isCurrent ? $current->similarity_status_label : $match['similarity_status_label'],
+            'score' => $isCurrent ? null : $match['score'],
+            'location_score' => $isCurrent ? null : $match['location_score'],
+            'problem_score' => $isCurrent ? null : $match['problem_score'],
+            'reasons' => $isCurrent ? [] : $match['reasons'],
+            'shared_terms' => $isCurrent ? [] : collect($match['evidence']['shared_terms'] ?? [])->take(6)->all(),
+        ];
+    }
+
+    private function kamusStatusFilter(mixed $value): string    {
         $value = trim((string) $value);
 
         return array_key_exists($value, LaporanKamusHasil::STATUS_LABELS) ? $value : '';
