@@ -26,6 +26,8 @@ class AnalysisRunDetailTest extends TestCase
         LaporanMasyarakat::factory()->create([
             'ringkasan' => 'Aspirasi terdahulu tentang jalan berlubang',
             'isi' => $text,
+            'pelapor_alamat' => 'Jalan Melati No. 12, Kelurahan Bukit Indah',
+            'kecamatan' => 'Kecamatan Ujung',
             'dprd_member_id' => $member->id,
         ]);
 
@@ -33,6 +35,8 @@ class AnalysisRunDetailTest extends TestCase
             'nomor_tiket' => 'LPR-ANALISIS-001',
             'ringkasan' => 'Aspirasi baru tentang jalan berlubang',
             'isi' => $text,
+            'pelapor_alamat' => 'Jalan Melati No. 12, Kelurahan Bukit Indah',
+            'kecamatan' => 'Kecamatan Ujung',
             'dprd_member_id' => $member->id,
         ]);
 
@@ -60,16 +64,17 @@ class AnalysisRunDetailTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.analisis', $report))
             ->assertOk()
-            ->assertSee('Detail Perhitungan')
-            ->assertSee('Pra-pemrosesan Teks')
-            ->assertSee('TF-IDF Dokumen Baru')
-            ->assertSee('Cosine Similarity')
+            ->assertSee('Ringkasan Kemiripan')
+            ->assertSee('Aspirasi Pembanding')
+            ->assertSee('Kemiripan tertinggi')
             ->assertSee('Aspirasi terdahulu tentang jalan berlubang')
-            ->assertSee('Snapshot tersimpan')
-            ->assertSee(AspirationSimilarityService::ALGORITHM_VERSION);
+            ->assertSee(number_format((float) $run->highest_similarity * 100, 1, ',', '.').' %')
+            ->assertDontSee('TF-IDF')
+            ->assertDontSee('Detail Perhitungan')
+            ->assertDontSee('Cosine Similarity');
     }
 
-    public function test_report_detail_links_to_analysis_page_for_administrator(): void
+    public function test_report_detail_no_longer_links_to_analysis_page(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
@@ -81,8 +86,13 @@ class AnalysisRunDetailTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Lihat Rincian Analisis')
-            ->assertSee(route('laporan.analisis', $report), false);
+            ->assertDontSee('Lihat Rincian Analisis')
+            ->assertDontSee(route('laporan.analisis', $report), false);
+
+        // Halaman analisis tetap tersedia bila dibuka langsung oleh administrator.
+        $this->actingAs($admin)
+            ->get(route('laporan.analisis', $report))
+            ->assertOk();
     }
 
     public function test_staff_cannot_open_analysis_page(): void
@@ -124,8 +134,8 @@ class AnalysisRunDetailTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.analisis', $report))
             ->assertOk()
-            ->assertSee('Ringkasan legacy')
-            ->assertSee('Tanpa detail')
+            ->assertSee('Ringkasan Kemiripan')
+            ->assertSee('90,0 %')
             ->assertDontSee('TF-IDF Dokumen Baru')
             ->assertDontSee('Pra-pemrosesan Teks');
     }

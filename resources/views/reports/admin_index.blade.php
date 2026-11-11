@@ -207,7 +207,7 @@
                                 <th scope="col">Nama pelapor</th>
                                 <th scope="col" class="d-none d-md-table-cell">Anggota DPRD tujuan</th>
                                 <th scope="col">Isi aspirasi</th>
-                                <th scope="col">Kemiripan</th>
+                                <th scope="col" class="text-center">Kemiripan</th>
                                 <th scope="col">Status</th>
                                 <th scope="col">Status Kamus</th>
                                 <th scope="col"><span class="visually-hidden">Tindakan</span></th>
@@ -216,32 +216,24 @@
                         <tbody>
                             @foreach ($reports as $report)
                                 @php
-                                    $statusTone = match ($report->status) {
-                                        \App\Models\LaporanMasyarakat::STATUS_SELESAI => 'success',
-                                        \App\Models\LaporanMasyarakat::STATUS_DIPROSES,
-                                        \App\Models\LaporanMasyarakat::STATUS_DITUGASKAN => 'info',
-                                        \App\Models\LaporanMasyarakat::STATUS_DITOLAK => 'danger',
-                                        default => 'warning',
-                                    };
                                     $matches = $similarityMatches->get($report->id, []);
                                     $matchCount = count($matches);
                                     $panel = $similarityPanels->get($report->id);
-                                    $highestScore = null;
-                                    if (!empty($matches)) {
-                                        $highestScore = collect($matches)->max('score');
-                                    } elseif ($panel && isset($panel['highest_score']) && $panel['highest_score'] > 0) {
-                                        $highestScore = $panel['highest_score'];
-                                    }
-                                    $highestPercentage = $highestScore !== null ? (int) round($highestScore * 100) : null;
-                                    $isMain = $report->similarity_status === \App\Models\LaporanMasyarakat::SIMILARITY_STATUS_UTAMA;
+                                    $group = $report->similarityGroup;
+                                    $isMain = ($group && (int) $group->main_laporan_id === (int) $report->id)
+                                        || $report->similarity_status === \App\Models\LaporanMasyarakat::SIMILARITY_STATUS_UTAMA;
                                     $isMerged = $report->is_duplicate_merged;
                                     $isSeparated = $report->similarity_status === \App\Models\LaporanMasyarakat::SIMILARITY_STATUS_DIPISAH;
                                     $isUnread = isset($unreadReportLookup[$report->id]);
-                                    $groupMembersCount = $report->similarityGroup?->members->count() ?? 0;
-                                    $groupTotal = max($groupMembersCount, $matchCount + ($matchCount > 0 ? 1 : 0));
-                                    $similarHeadline = $groupTotal >= 3
-                                        ? 'Terdapat '.$groupTotal.' Aspirasi Serupa'
-                                        : 'Aspirasi Mirip';
+                                    $groupMembersCount = $group?->members->count() ?? 0;
+                                    $hasSimilarity = ! $isSeparated
+                                        && ($isMerged || $matchCount > 0 || $groupMembersCount >= 2);
+                                    $canCompare = $panel && $matchCount > 0;
+                                    $isDitugaskan = in_array($report->status, [
+                                        \App\Models\LaporanMasyarakat::STATUS_DITUGASKAN,
+                                        \App\Models\LaporanMasyarakat::STATUS_DIPROSES,
+                                        \App\Models\LaporanMasyarakat::STATUS_SELESAI,
+                                    ], true) || $report->assigned_at !== null || $report->penugasans()->exists();
                                 @endphp
                                 <tr class="{{ $isUnread ? 'is-unread-report' : '' }}">
                                     <td>
@@ -258,80 +250,39 @@
                                         {{ $report->ringkasan }}
                                     </td>
                                     <td class="report-similarity-cell">
-                                        @if ($isMerged)
-                                            <span class="status-badge status-danger">Digabungkan</span>
-                                            <span class="cell-sub d-block mt-1">
-                                                ke aspirasi utama
-                                                @if ($report->duplicateOf)
-                                                    <a href="{{ route('laporan.show', ['laporan' => $report->duplicateOf, 'return_to' => $returnUrl]) }}">
-                                                        {{ $report->duplicateOf->nomor_tiket }}
-                                                    </a>
-                                                @endif
-                                            </span>
-                                            <form method="POST"
-                                                  action="{{ route('laporan.kemiripan.decide', $report) }}"
-                                                  class="mt-2">
-                                                @csrf
-                                                <input type="hidden" name="action" value="tetap_terpisah">
-                                                <input type="hidden" name="selected_ids[]" value="{{ $report->id }}">
-                                                <input type="hidden" name="return_to" value="{{ $returnUrl }}">
-                                                <button type="submit" class="btn btn-outline-soft btn-sm">
-                                                    <i class="ri-link-unlink" aria-hidden="true"></i>
-                                                    Pisahkan
-                                                </button>
-                                            </form>
-                                        @elseif ($isMain)
+                                        @if ($isMain)
                                             <span class="status-badge status-success">Aspirasi Utama</span>
-                                            @if ($matchCount > 0 || $highestPercentage !== null)
-                                                <span class="cell-sub d-block mt-1">
-                                                    @if ($highestPercentage !== null)
-                                                        Kemiripan: <strong>{{ $highestPercentage }}%</strong> &middot;
-                                                    @endif
-                                                    {{ $similarHeadline }}
-                                                </span>
+                                            @if ($hasSimilarity)
+                                                <div class="mt-2">
+                                                    <span class="similarity-badge">
+                                                        <i class="ri-team-line" aria-hidden="true"></i>
+                                                        Ada Kemiripan
+                                                    </span>
+                                                </div>
+                                            @endif
+                                            @if ($canCompare)
                                                 <button type="button"
                                                         class="btn btn-outline-soft btn-sm mt-2"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#similarityModal{{ $report->id }}">
                                                     <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
-                                                    Bandingkan Aspirasi
+                                                    Bandingkan
                                                 </button>
                                             @endif
-                                        @elseif ($matchCount > 0 || $groupMembersCount >= 2 || $highestPercentage !== null)
-                                            @if ($groupTotal >= 3)
-                                                <span class="status-badge status-primary" style="background: #ede9fe; color: #5b21b6; border-color: #ddd6fe;">{{ $similarHeadline }}</span>
-                                            @elseif ($highestPercentage !== null)
-                                                <span class="status-badge status-info" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">Aspirasi Mirip ({{ $highestPercentage }}%)</span>
-                                            @else
-                                                <span class="status-badge status-info" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">Aspirasi Mirip</span>
-                                            @endif
-                                            <span class="cell-sub d-block mt-1">
-                                                @if ($highestPercentage !== null)
-                                                    Kemiripan: <strong>{{ $highestPercentage }}%</strong> &middot;
-                                                @endif
-                                                {{ $groupTotal >= 3
-                                                    ? 'Kelompok ini memiliki '.$groupTotal.' aspirasi yang saling mirip.'
-                                                    : 'Aspirasi Mirip Ditemukan: Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.' }}
+                                        @elseif ($hasSimilarity)
+                                            <span class="similarity-badge">
+                                                <i class="ri-team-line" aria-hidden="true"></i>
+                                                Ada Kemiripan
                                             </span>
-                                            @if ($isSeparated)
-                                                <span class="cell-sub d-block mt-1">Sudah ditandai bukan duplikat.</span>
-                                            @endif
-                                            @if ($matchCount > 0 || ($panel && !empty($panel['matches'])))
-                                                <button type="button"
-                                                        class="btn btn-outline-soft btn-sm mt-2"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#similarityModal{{ $report->id }}">
-                                                    <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
-                                                    Bandingkan Aspirasi
-                                                </button>
-                                            @endif
-                                        @elseif ($isSeparated)
-                                            <span class="status-badge status-neutral">Diproses Terpisah</span>
                                         @else
                                             <span class="cell-muted">—</span>
                                         @endif
                                     </td>
-                                    <td><span class="status-badge status-{{ $statusTone }}">{{ $report->status_label }}</span></td>
+                                    <td>
+                                        <span class="status-badge status-{{ $isDitugaskan ? 'info' : 'warning' }}">
+                                            {{ $isDitugaskan ? 'Ditugaskan' : 'Menunggu Penugasan' }}
+                                        </span>
+                                    </td>
                                     <td>
                                         @if ($report->kamus_status === \App\Models\LaporanKamusHasil::STATUS_SESUAI)
                                             <span class="status-badge status-success">Sesuai Kamus</span>
@@ -509,8 +460,6 @@
                                                     @php
                                                         $matchPercent = (float) ($match['score'] !== null ? $match['score'] * 100 : 0);
                                                         $scoreTone = $matchPercent >= 90 ? 'is-very-high' : 'is-high';
-                                                        $locationPercent = $match['location_score'] !== null ? (int) round($match['location_score'] * 100) : null;
-                                                        $problemPercent = $match['problem_score'] !== null ? (int) round($match['problem_score'] * 100) : null;
                                                     @endphp
 
                                                     <label class="similarity-card similarity-card-match">
@@ -552,23 +501,6 @@
                                                                 @if ($match['kecamatan'])
                                                                     · {{ $match['kecamatan'] }}
                                                                 @endif
-                                                            </span>
-
-                                                            <span class="similarity-meters" aria-label="Rincian skor kemiripan">
-                                                                <span class="similarity-meter-row">
-                                                                    <span class="similarity-meter-label">Lokasi</span>
-                                                                    <span class="similarity-meter">
-                                                                        <span class="similarity-meter-fill is-location" style="width: {{ $locationPercent ?? 0 }}%"></span>
-                                                                    </span>
-                                                                    <strong>{{ $locationPercent !== null ? $locationPercent.'%' : '—' }}</strong>
-                                                                </span>
-                                                                <span class="similarity-meter-row">
-                                                                    <span class="similarity-meter-label">Inti masalah</span>
-                                                                    <span class="similarity-meter">
-                                                                        <span class="similarity-meter-fill is-problem" style="width: {{ $problemPercent ?? 0 }}%"></span>
-                                                                    </span>
-                                                                    <strong>{{ $problemPercent !== null ? $problemPercent.'%' : '—' }}</strong>
-                                                                </span>
                                                             </span>
 
                                                             <span class="similarity-selected-note">
@@ -747,7 +679,23 @@
         .report-simple-table { min-width: 1080px; }
         .report-simple-table th, .report-simple-table td { padding: 15px 14px; font-size: 13px; vertical-align: middle; }
         .report-summary-cell { min-width: 220px; max-width: 420px; line-height: 1.6; }
-        .report-similarity-cell { min-width: 230px; max-width: 300px; }
+        .report-similarity-cell { min-width: 230px; max-width: 300px; text-align: center; }
+        .similarity-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border: 1px solid #fee2e2;
+            border-radius: 999px;
+            background-color: #fef2f2;
+            color: #dc2626;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        .similarity-badge i { font-size: 12px; line-height: 1; }
         .report-view-button { min-height: 40px; white-space: nowrap; }
         .report-delete-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-height: 40px; padding: 0; border-radius: 12px; }
         .report-delete-button i { font-size: 17px; }

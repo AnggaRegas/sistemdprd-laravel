@@ -134,6 +134,8 @@ Route::middleware(['auth', 'active', 'password.current'])->group(function () {
 
     Route::middleware('role:staf_pendamping')->group(function () {
         Route::get('/dashboard/staf', [DashboardController::class, 'staff'])->name('dashboard.staf');
+        Route::get('/dashboard/staf/ekspor', [PenugasanController::class, 'export'])
+            ->name('dashboard.staf.ekspor');
     });
 
     /*

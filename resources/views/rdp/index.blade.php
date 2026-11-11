@@ -69,7 +69,7 @@
     </div>
 
     <div class="app-card filter-card">
-        <form method="GET" action="{{ route('komisi.rdp.index', $commission) }}" class="filter-bar" role="search">
+        <form method="GET" action="{{ route('komisi.rdp.index', $commission) }}" class="filter-bar" role="search" data-live-search>
             <div class="filter-search">
                 <i class="ri-search-line" aria-hidden="true"></i>
                 <input type="search" name="q" value="{{ $filters['q'] }}"

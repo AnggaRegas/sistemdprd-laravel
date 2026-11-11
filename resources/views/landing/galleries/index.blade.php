@@ -13,8 +13,7 @@
     @php
         $hasFilters = $filters['q'] !== ''
             || $filters['status'] !== null
-            || $filters['date_from'] !== null
-            || $filters['date_to'] !== null;
+            || $filters['date'] !== null;
 
         $statusClasses = [
             \App\Models\LandingGallery::STATUS_DRAFT => 'status-neutral',
@@ -89,7 +88,7 @@
     </div>
 
     <div class="app-card filter-card">
-        <form method="GET" action="{{ route('landing.galleries.index') }}" class="filter-bar" role="search">
+        <form method="GET" action="{{ route('landing.galleries.index') }}" class="filter-bar" role="search" data-live-search>
             <div class="filter-search">
                 <i class="ri-search-line" aria-hidden="true"></i>
                 <input type="search" name="q" value="{{ $filters['q'] }}"
@@ -104,13 +103,8 @@
                 @endforeach
             </select>
 
-            <div class="filter-date-group">
-                <input type="date" name="date_from" value="{{ $filters['date_from'] }}"
-                       class="filter-date" aria-label="Tanggal kegiatan mulai">
-                <span class="filter-date-sep">s.d.</span>
-                <input type="date" name="date_to" value="{{ $filters['date_to'] }}"
-                       class="filter-date" aria-label="Tanggal kegiatan sampai">
-            </div>
+            <input type="date" name="date" value="{{ $filters['date'] }}"
+                   class="filter-date" aria-label="Tanggal kegiatan">
 
             <div class="filter-actions">
                 <button type="submit" class="btn btn-emerald btn-sm">
@@ -187,7 +181,7 @@
                                         <img src="{{ \Illuminate\Support\Facades\Storage::url($gallery->cover_image) }}"
                                              alt="Sampul album {{ $gallery->title }}"
                                              class="rounded"
-                                             style="width: 64px; height: 48px; object-fit: cover;"
+                                             style="width: 64px; height: 48px; object-fit: cover; object-position: center;"
                                              loading="lazy">
                                     @else
                                         <span class="d-inline-flex align-items-center justify-content-center rounded bg-light text-muted"

@@ -137,7 +137,7 @@
                                     src="{{ \Illuminate\Support\Facades\Storage::url($gallery->cover_image) }}"
                                     alt="{{ $gallery->title }}"
                                     loading="lazy"
-                                    class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                                    class="h-full w-full object-cover object-center transition duration-500 group-hover:scale-[1.04]"
                                 >
                             @else
                                 <div class="absolute inset-0 bg-gradient-to-br from-[#0e3b31] via-[#124437] to-[#082a23]">

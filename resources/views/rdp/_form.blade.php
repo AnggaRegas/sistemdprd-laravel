@@ -3,7 +3,6 @@
     $selectedCommission = old('dprd_commission_id', $meeting->dprd_commission_id ?? $commission->id);
     $selectedStatus = old('status', $meeting->status ?? \App\Models\RdpMeeting::STATUS_DRAF);
     $meetingDate = old('meeting_date', $meeting->meeting_date?->format('Y-m-d') ?? now()->toDateString());
-    $startTime = old('start_time', $meeting->start_time ? substr((string) $meeting->start_time, 0, 5) : '');
 @endphp
 
 <form method="POST" action="{{ $isEdit ? route('komisi.rdp.update', [$commission, $meeting]) : route('komisi.rdp.store', $commission) }}">
@@ -13,7 +12,7 @@
     @endif
 
     <div class="row g-3">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="app-card">
                 <div class="app-card-header">
                     <div>
@@ -25,25 +24,26 @@
 
                 <div class="app-card-body">
                     <div class="row g-3">
-                        <div class="col-md-7">
-                            <label class="form-label" for="dprd_commission_id">Komisi <span class="req">*</span></label>
-                            <select id="dprd_commission_id" name="dprd_commission_id"
-                                    class="form-select @error('dprd_commission_id') is-invalid @enderror" required>
-                                @foreach ($commissions as $option)
-                                    <option value="{{ $option->id }}" @selected((string) $selectedCommission === (string) $option->id)>
-                                        {{ $option->name }}{{ $option->field ? ' — '.$option->field : '' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('dprd_commission_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            <div class="form-text">
-                                Komisi divalidasi ulang di server. ID komisi dari browser tidak dipercaya begitu saja.
+                        @if ($isEdit)
+                            <div class="col-md-6">
+                                <label class="form-label" for="dprd_commission_id">Komisi <span class="req">*</span></label>
+                                <select id="dprd_commission_id" name="dprd_commission_id"
+                                        class="form-select @error('dprd_commission_id') is-invalid @enderror" required>
+                                    @foreach ($commissions as $option)
+                                        <option value="{{ $option->id }}" @selected((string) $selectedCommission === (string) $option->id)>
+                                            {{ $option->name }}{{ $option->field ? ' — '.$option->field : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('dprd_commission_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
                             </div>
-                        </div>
+                        @else
+                            <input type="hidden" name="dprd_commission_id" value="{{ $selectedCommission }}">
+                        @endif
 
-                        <div class="col-md-5">
+                        <div class="col-md-6">
                             <label class="form-label" for="status">Status RDP <span class="req">*</span></label>
                             <select id="status" name="status"
                                     class="form-select @error('status') is-invalid @enderror" required>
@@ -69,18 +69,6 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label" for="code">Nomor / Kode RDP</label>
-                            <input type="text" id="code" name="code"
-                                   value="{{ old('code', $meeting->code ?? '') }}"
-                                   class="form-control @error('code') is-invalid @enderror"
-                                   maxlength="80" placeholder="Contoh: RDP-K1/001/2026">
-                            @error('code')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            <div class="form-text">Kode unik per komisi. Kode lama dapat dipakai kembali setelah RDP dihapus.</div>
-                        </div>
-
-                        <div class="col-md-3">
                             <label class="form-label" for="meeting_date">Tanggal <span class="req">*</span></label>
                             <input type="date" id="meeting_date" name="meeting_date"
                                    value="{{ $meetingDate }}"
@@ -90,17 +78,7 @@
                             @enderror
                         </div>
 
-                        <div class="col-md-3">
-                            <label class="form-label" for="start_time">Waktu</label>
-                            <input type="time" id="start_time" name="start_time"
-                                   value="{{ $startTime }}"
-                                   class="form-control @error('start_time') is-invalid @enderror">
-                            @error('start_time')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="col-12">
+                        <div class="col-md-6">
                             <label class="form-label" for="location">Tempat Pelaksanaan</label>
                             <input type="text" id="location" name="location"
                                    value="{{ old('location', $meeting->location ?? '') }}"
@@ -137,62 +115,19 @@
                     <div class="demo-note mt-3 mb-0">
                         <i class="ri-shield-check-line" aria-hidden="true"></i>
                         <div>
-                            RDP selalu terikat pada satu komisi. Setelah disimpan, RDP hanya muncul pada folder komisi
-                            yang dipilih dan tidak dapat tercampur dengan komisi lain.
+                            Nomor RDP dan waktu dicatat otomatis oleh sistem. RDP tersimpan pada komisi
+                            {{ $commission->name }} dan tidak tercampur dengan komisi lain.
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-lg-4">
-            <div class="app-card mb-3">
-                <div class="app-card-header">
-                    <div>
-                        <h2 class="app-card-title">Folder Komisi</h2>
-                        <p class="app-card-subtitle">Tujuan penyimpanan arsip RDP.</p>
-                    </div>
-                </div>
-
-                <div class="app-card-body">
-                    <div class="d-flex align-items-start gap-3">
-                        <span class="commission-icon commission-icon-sm" aria-hidden="true">
-                            <i class="{{ $commission->icon }}"></i>
-                        </span>
-                        <div>
-                            <strong class="d-block text-ink">{{ $commission->name }}</strong>
-                            <span class="text-muted-soft fs-10">{{ $commission->field ?: 'Bidang belum diisi' }}</span>
-                        </div>
-                    </div>
-
-                    <div class="demo-note mt-3 mb-0">
-                        <i class="ri-information-line" aria-hidden="true"></i>
-                        <div>
-                            @if ($commission->is_active)
-                                Komisi ini aktif dan dapat menerima RDP baru.
-                            @else
-                                Komisi ini nonaktif. RDP baru tidak dapat ditambahkan sampai komisi diaktifkan kembali.
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="app-card">
-                <div class="app-card-body">
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-emerald">
-                            <i class="ri-save-3-line" aria-hidden="true"></i>
-                            {{ $isEdit ? 'Simpan Perubahan' : 'Simpan RDP' }}
-                        </button>
-                        <a href="{{ $isEdit ? route('komisi.rdp.show', [$commission, $meeting]) : route('komisi.rdp.index', $commission) }}"
-                           class="btn btn-outline-soft">
-                            <i class="ri-arrow-left-line" aria-hidden="true"></i>
-                            Batal dan Kembali
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="d-grid mt-3">
+        <button type="submit" class="btn btn-emerald">
+            <i class="ri-save-3-line" aria-hidden="true"></i>
+            {{ $isEdit ? 'Simpan Perubahan' : 'Simpan RDP' }}
+        </button>
     </div>
 </form>

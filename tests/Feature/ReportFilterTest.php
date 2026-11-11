@@ -142,7 +142,7 @@ class ReportFilterTest extends TestCase
         $responseSim->assertSee('Laporan Serupa 2');
         $responseSim->assertSee('Laporan Serupa 3');
         $responseSim->assertDontSee('Laporan Sangat Unik Sendirian');
-        $responseSim->assertSee('Terdapat 3 Aspirasi Serupa');
+        $responseSim->assertSee('Ada Kemiripan');
 
         // 2. Filter: tidak memiliki kemiripan
         $responseNoSim = $this->actingAs($admin)

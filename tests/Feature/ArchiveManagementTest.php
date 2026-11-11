@@ -209,6 +209,34 @@ class ArchiveManagementTest extends TestCase
         $this->assertDatabaseMissing('arsips', ['nomor' => 'ARS-FILE-INVALID']);
     }
 
+    public function test_archive_number_is_generated_automatically_when_creating_without_number(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+        $category = KategoriArsip::factory()->create();
+
+        $this->actingAs($admin)
+            ->get(route('arsip.create'))
+            ->assertOk()
+            ->assertSee('Dibuat otomatis')
+            ->assertDontSee('Nomor Arsip');
+
+        $payload = $this->payload($member, $category, [
+            'nama' => 'Arsip Tanpa Nomor',
+        ]);
+        unset($payload['nomor']);
+
+        $this->actingAs($admin)
+            ->post(route('arsip.store'), $payload)
+            ->assertRedirect(route('arsip.index'))
+            ->assertSessionHas('success');
+
+        $archive = Arsip::query()->where('nama', 'Arsip Tanpa Nomor')->firstOrFail();
+
+        $this->assertNotEmpty($archive->nomor);
+        $this->assertStringStartsWith('ARS-', $archive->nomor);
+    }
+
     public function test_member_archive_page_shows_categories_and_member_identity(): void
     {
         $admin = $this->administrator();
@@ -490,9 +518,9 @@ class ArchiveManagementTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Folder Anggota DPRD')
-            ->assertSee('Anggota aktif')
-            ->assertSee('Sudah memiliki dokumen')
-            ->assertSee('Belum memiliki dokumen')
+            ->assertSee('Cari nama anggota DPRD')
+            ->assertDontSee('Sudah memiliki dokumen')
+            ->assertDontSee('Belum memiliki dokumen')
             ->assertSee('H. Sukardi Aktif')
             ->assertSee('2 dokumen')
             ->assertSee('Hj. Fatimah Aktif')

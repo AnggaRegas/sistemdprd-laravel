@@ -147,8 +147,8 @@ class PenugasanCompletionTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Penugasan Tindak Lanjut')
-            ->assertSee($result);
+            ->assertDontSee('Penugasan Tindak Lanjut')
+            ->assertDontSee($result);
     }
 
     public function test_bukti_tindak_lanjut_stored_privately_and_downloadable_by_owner_and_admin(): void
@@ -395,11 +395,59 @@ class PenugasanCompletionTest extends TestCase
             ->assertDontSee('Aspirasi Milik Staf B');
 
         $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Monitoring Penugasan');
+
+        $this->actingAs($admin)
             ->get(route('penugasan.index'))
             ->assertOk()
             ->assertSee('Aspirasi Milik Staf A')
             ->assertSee('Aspirasi Milik Staf B')
             ->assertSee('Monitoring Penugasan Staff Pendamping');
+    }
+
+    public function test_staff_export_contains_only_own_assignments(): void
+    {
+        $admin = $this->administrator();
+        $memberA = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Ekspor A']);
+        $memberB = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Ekspor B']);
+        $staffA = $this->staff($memberA, 'Staf Ekspor A');
+        $staffB = $this->staff($memberB, 'Staf Ekspor B');
+
+        $reportA = $this->waitingReport($memberA, 'Aspirasi Ekspor Milik A');
+        $reportB = $this->waitingReport($memberB, 'Aspirasi Ekspor Milik B');
+
+        $this->assign($admin, $reportA);
+        $this->assign($admin, $reportB);
+
+        $response = $this->actingAs($staffA)
+            ->get(route('dashboard.staf.ekspor'))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
+            ->assertSessionHas('success');
+
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString('Nomor Tiket', $content);
+        $this->assertStringContainsString('Aspirasi Ekspor Milik A', $content);
+        $this->assertStringContainsString('Anggota Ekspor A', $content);
+        $this->assertStringNotContainsString('Aspirasi Ekspor Milik B', $content);
+        $this->assertStringNotContainsString('Anggota Ekspor B', $content);
+
+        // Staf B tetap dapat mengekspor datanya sendiri.
+        $contentB = $this->actingAs($staffB)
+            ->get(route('dashboard.staf.ekspor'))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('Aspirasi Ekspor Milik B', $contentB);
+        $this->assertStringNotContainsString('Aspirasi Ekspor Milik A', $contentB);
+
+        // Superadmin tidak boleh memakai endpoint ekspor milik staf.
+        $this->actingAs($admin)
+            ->get(route('dashboard.staf.ekspor'))
+            ->assertForbidden();
     }
 
     public function test_notification_can_be_marked_read_and_opens_assignment_detail(): void

@@ -13,7 +13,7 @@
     <x-admin.page-header
         eyebrow="Arsip Dokumen"
         title="Folder Anggota DPRD"
-        :description="'Pilih anggota DPRD untuk membuka folder arsipnya. Tersedia '.number_format($memberStats['total'], 0, ',', '.').' anggota aktif pada database.'"
+        :description="'Pilih anggota DPRD untuk membuka folder arsipnya.'"
     >
         @can('create', App\Models\Arsip::class)
             <a href="{{ route('arsip.create') }}" class="btn btn-gold">
@@ -21,79 +21,15 @@
                 Tambah Arsip
             </a>
         @endcan
-
-        <a href="#daftar-dokumen" class="btn btn-outline-soft">
-            <i class="ri-file-list-3-line" aria-hidden="true"></i>
-            Lihat Semua Dokumen
-        </a>
     </x-admin.page-header>
 
-    <div class="app-card mb-3">
-        <div class="app-card-body-tight">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #eef6f1; color: #155043;">
-                            <i class="ri-group-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($memberStats['total'], 0, ',', '.') }}</strong>
-                            <span>Anggota aktif</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #fbf3e2; color: #a9853f;">
-                            <i class="ri-folder-check-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($memberStats['with_documents'], 0, ',', '.') }}</strong>
-                            <span>Sudah memiliki dokumen</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #eaf2fb; color: #2c6aa0;">
-                            <i class="ri-folder-open-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($memberStats['without_documents'], 0, ',', '.') }}</strong>
-                            <span>Belum memiliki dokumen</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="app-card filter-card">
-        <form method="GET" action="{{ route('arsip.index') }}#folder-anggota" class="filter-bar" role="search">
+        <form method="GET" action="{{ route('arsip.index') }}#folder-anggota" class="filter-bar" role="search" data-live-search>
             <div class="filter-search">
                 <i class="ri-search-line" aria-hidden="true"></i>
                 <input type="search" name="member_q" value="{{ $memberFilters['q'] }}"
                        placeholder="Cari nama anggota DPRD..."
                        aria-label="Cari anggota DPRD" maxlength="100">
-            </div>
-
-            <select name="member_docs" class="filter-select" data-auto-submit aria-label="Filter ketersediaan dokumen anggota">
-                <option value="">Semua ketersediaan dokumen</option>
-                <option value="has" @selected($memberFilters['docs'] === 'has')>Sudah memiliki dokumen</option>
-                <option value="empty" @selected($memberFilters['docs'] === 'empty')>Belum memiliki dokumen</option>
-            </select>
-
-            <div class="filter-actions">
-                <button type="submit" class="btn btn-emerald btn-sm">
-                    <i class="ri-filter-3-line" aria-hidden="true"></i>
-                    Terapkan
-                </button>
-                <a href="{{ route('arsip.index') }}" class="filter-reset">
-                    <i class="ri-refresh-line" aria-hidden="true"></i>
-                    Reset
-                </a>
             </div>
         </form>
     </div>
@@ -187,7 +123,7 @@
 
         <div class="collapse {{ $hasFilters ? 'show' : '' }}" id="archiveDocumentList">
             <div class="app-card-body-tight">
-                <form method="GET" action="{{ route('arsip.index') }}#daftar-dokumen" class="filter-bar" role="search">
+                <form method="GET" action="{{ route('arsip.index') }}#daftar-dokumen" class="filter-bar" role="search" data-live-search>
                     <div class="filter-search">
                         <i class="ri-search-line" aria-hidden="true"></i>
                         <input type="search" name="q" value="{{ $filters['q'] }}"
@@ -222,17 +158,6 @@
 
                     <input type="date" name="tanggal" class="filter-date" value="{{ $filters['tanggal'] }}"
                            aria-label="Filter tanggal arsip" title="Filter tanggal arsip">
-
-                    <div class="filter-actions">
-                        <button type="submit" class="btn btn-emerald btn-sm">
-                            <i class="ri-filter-3-line" aria-hidden="true"></i>
-                            Terapkan
-                        </button>
-                        <a href="{{ route('arsip.index') }}" class="filter-reset">
-                            <i class="ri-refresh-line" aria-hidden="true"></i>
-                            Reset
-                        </a>
-                    </div>
                 </form>
             </div>
 

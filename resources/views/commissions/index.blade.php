@@ -100,6 +100,12 @@
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li>
+                                        <a class="dropdown-item" href="{{ route('komisi.rdp.create', $commission) }}">
+                                            <i class="ri-add-line" aria-hidden="true"></i>
+                                            Tambah RDP
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a class="dropdown-item" href="{{ route('komisi.edit', $commission) }}">
                                             <i class="ri-edit-line" aria-hidden="true"></i>
                                             Edit Komisi

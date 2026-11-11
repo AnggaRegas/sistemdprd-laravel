@@ -619,6 +619,41 @@ function initPageHelpers() {
         });
     });
 
+    /*
+     * Pencarian langsung: kirim form setelah pengguna berhenti mengetik,
+     * dan langsung kirim saat kolom dikosongkan agar daftar kembali penuh.
+     */
+    document.querySelectorAll('form[data-live-search]').forEach((form) => {
+        const fields = form.querySelectorAll('input[type="search"], input[type="text"]');
+
+        fields.forEach((field) => {
+            let timer = null;
+
+            const submit = () => {
+                window.clearTimeout(timer);
+                timer = null;
+                form.submit();
+            };
+
+            field.addEventListener('input', () => {
+                window.clearTimeout(timer);
+
+                if (field.value.trim() === '') {
+                    submit();
+                    return;
+                }
+
+                timer = window.setTimeout(submit, 400);
+            });
+
+            field.addEventListener('search', () => {
+                if (field.value.trim() === '') {
+                    submit();
+                }
+            });
+        });
+    });
+
     document.querySelectorAll('[data-task-toggle]').forEach((button) => {
         button.addEventListener('click', () => {
             button.classList.toggle('is-done');
@@ -688,10 +723,9 @@ function initArchiveChart() {
             animations: { enabled: true, speed: 550 },
         },
         series: [
-            { name: 'Arsip masuk', data: data.series12.in },
-            { name: 'Arsip keluar', data: data.series12.out },
+            { name: 'Aspirasi masyarakat', data: data.series },
         ],
-        colors: ['#155043', '#c9a45c'],
+        colors: ['#155043'],
         stroke: {
             curve: 'smooth',
             width: 2.4,
@@ -719,7 +753,7 @@ function initArchiveChart() {
             yaxis: { lines: { show: true } },
         },
         xaxis: {
-            categories: data.labels12,
+            categories: data.labels,
             axisBorder: { show: false },
             axisTicks: { show: false },
             labels: {
@@ -745,7 +779,7 @@ function initArchiveChart() {
         tooltip: {
             theme: 'light',
             x: { show: true },
-            y: { formatter: (value) => value + ' dokumen' },
+            y: { formatter: (value) => value + ' aspirasi' },
         },
         responsive: [
             {
@@ -761,24 +795,52 @@ function initArchiveChart() {
     });
 
     chart.render();
+}
 
-    document.querySelectorAll('[data-chart-range]').forEach((button) => {
-        button.addEventListener('click', () => {
-            const range = button.getAttribute('data-chart-range');
-            const labels = range === '6' ? data.labels6 : data.labels12;
-            const series = range === '6' ? data.series6 : data.series12;
+/* --------------------------------------------------------------------------
+   Ekspor tugas staf (unduhan nyata dari backend)
+   -------------------------------------------------------------------------- */
 
-            chart.updateOptions({ xaxis: { categories: labels } });
-            chart.updateSeries([
-                { name: 'Arsip masuk', data: series.in },
-                { name: 'Arsip keluar', data: series.out },
-            ]);
+function initStaffExport() {
+    const trigger = document.querySelector('[data-staff-export]');
 
-            document.querySelectorAll('[data-chart-range]').forEach((item) => {
-                item.classList.toggle('is-active', item === button);
-                item.setAttribute('aria-pressed', item === button ? 'true' : 'false');
+    if (!trigger) {
+        return;
+    }
+
+    trigger.addEventListener('click', async (event) => {
+        event.preventDefault();
+
+        try {
+            const response = await fetch(trigger.href, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
-        });
+
+            const contentType = response.headers.get('Content-Type') || '';
+
+            if (!response.ok || !contentType.includes('text/csv')) {
+                throw new Error('Ekspor gagal: ' + response.status);
+            }
+
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+            const filename = match ? decodeURIComponent(match[1]) : 'tugas-staf.csv';
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+
+            showToast('File ekspor tugas berhasil diunduh.', 'Ekspor Tugas');
+        } catch (error) {
+            showToast('Gagal membuat file ekspor tugas. Silakan coba lagi.', 'Ekspor Tugas');
+        }
     });
 }
 
@@ -796,6 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAccountAndDocumentModals();
     initPageHelpers();
     initArchiveChart();
+    initStaffExport();
 
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {
         new bootstrap.Tooltip(element);

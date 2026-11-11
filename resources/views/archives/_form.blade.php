@@ -34,18 +34,20 @@
 
                 <div class="app-card-body">
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label" for="nomor">Nomor Arsip <span class="req">*</span></label>
-                            <input type="text" id="nomor" name="nomor"
-                                   value="{{ old('nomor', $archive->nomor ?? '') }}"
-                                   class="form-control @error('nomor') is-invalid @enderror"
-                                   required maxlength="100" placeholder="090/DPRD-PRP/X/2026" autofocus>
-                            @error('nomor')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
+                        @if ($isEdit)
+                            <div class="col-md-6">
+                                <label class="form-label" for="nomor">Nomor Arsip <span class="req">*</span></label>
+                                <input type="text" id="nomor" name="nomor"
+                                       value="{{ old('nomor', $archive->nomor ?? '') }}"
+                                       class="form-control @error('nomor') is-invalid @enderror"
+                                       required maxlength="100" placeholder="090/DPRD-PRP/X/2026" autofocus>
+                                @error('nomor')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        @endif
 
-                        <div class="col-md-6">
+                        <div class="{{ $isEdit ? 'col-md-6' : 'col-12' }}">
                             <label class="form-label" for="kategori_arsip_id">Kategori <span class="req">*</span></label>
                             <select id="kategori_arsip_id" name="kategori_arsip_id"
                                     class="form-select @error('kategori_arsip_id') is-invalid @enderror" required>
@@ -279,7 +281,7 @@
                     <dl class="detail-list">
                         <div class="detail-row">
                             <dt>Nomor</dt>
-                            <dd>{{ old('nomor', $archive->nomor ?? 'Belum diisi') }}</dd>
+                            <dd>{{ $isEdit ? old('nomor', $archive->nomor ?? 'Belum diisi') : 'Dibuat otomatis' }}</dd>
                         </div>
                         <div class="detail-row">
                             <dt>Dokumen</dt>

@@ -113,20 +113,38 @@ class AspirationGroupingService
             ->delete();
 
         foreach ($analysis['pairs'] as $pair) {
-            $left = (int) $pair['left_id'];
-            $right = (int) $pair['right_id'];
-            $newer = max($left, $right);
-            $older = min($left, $right);
-
-            LaporanSimilarityResult::query()->create([
-                'laporan_masyarakat_id' => $newer,
-                'compared_laporan_masyarakat_id' => $older,
-                'similarity_score' => $pair['score'],
-                'similarity_level' => $pair['level'],
-                'evidence' => $pair['evidence'],
-                'checked_at' => now(),
-            ]);
+            $this->storePair($pair);
         }
+
+        /*
+         * Pasangan yang hanya mirip teks tetapi lokasinya belum terkonfirmasi
+         * tetap disimpan sebagai bahan peninjauan manual. Baris ini tidak
+         * pernah dihitung sebagai duplikat/kelompok karena levelnya berbeda.
+         */
+        foreach ($analysis['review_pairs'] ?? [] as $pair) {
+            $this->storePair($pair);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $pair
+     */
+    private function storePair(array $pair): void
+    {
+        $left = (int) $pair['left_id'];
+        $right = (int) $pair['right_id'];
+        $newer = max($left, $right);
+        $older = min($left, $right);
+
+        LaporanSimilarityResult::query()->create([
+            'laporan_masyarakat_id' => $newer,
+            'compared_laporan_masyarakat_id' => $older,
+            // Skor tersimpan adalah cosine TF-IDF murni.
+            'similarity_score' => $pair['problem_score'] ?? $pair['score'],
+            'similarity_level' => $pair['level'],
+            'evidence' => $pair['evidence'],
+            'checked_at' => now(),
+        ]);
     }
 
     /**
@@ -139,35 +157,27 @@ class AspirationGroupingService
     private function persistAnalysisRuns(DprdMember $member, Collection $reports, array $analysis): void
     {
         $pairsByReport = [];
+        $reviewByReport = [];
 
         foreach ($analysis['pairs'] as $pair) {
             $pairsByReport[$pair['left_id']][] = $pair;
             $pairsByReport[$pair['right_id']][] = $pair;
         }
 
+        foreach ($analysis['review_pairs'] ?? [] as $pair) {
+            $reviewByReport[$pair['left_id']][] = $pair;
+            $reviewByReport[$pair['right_id']][] = $pair;
+        }
+
         foreach ($reports as $report) {
             $involved = $pairsByReport[$report->id] ?? [];
+            $reviewInvolved = $reviewByReport[$report->id] ?? [];
             $level = $analysis['reports'][$report->id]['level']
                 ?? LaporanMasyarakat::SIMILARITY_LEVEL_TIDAK_ADA;
             $highest = $analysis['reports'][$report->id]['highest_similarity'] ?? null;
 
-            $snapshotPairs = array_map(function (array $pair) use ($report) {
-                $otherId = (int) $pair['left_id'] === (int) $report->id
-                    ? (int) $pair['right_id']
-                    : (int) $pair['left_id'];
-
-                $other = LaporanMasyarakat::query()->find($otherId);
-
-                return [
-                    'compared_laporan_id' => $otherId,
-                    'compared_nomor_tiket' => $other?->nomor_tiket,
-                    'compared_ringkasan' => $other?->ringkasan,
-                    'score' => $pair['score'],
-                    'cosine' => $pair['cosine'],
-                    'level' => $pair['level'],
-                    'evidence' => $pair['evidence'],
-                ];
-            }, $involved);
+            $snapshotPairs = $this->snapshotPairs($involved, $report->id);
+            $snapshotReview = $this->snapshotPairs($reviewInvolved, $report->id);
 
             LaporanAnalysisRun::query()->updateOrCreate(
                 ['laporan_masyarakat_id' => $report->id],
@@ -187,6 +197,8 @@ class AspirationGroupingService
                         'threshold_problem' => $analysis['threshold_problem'] ?? $analysis['threshold_high'],
                         'threshold_location' => $analysis['threshold_location'] ?? null,
                         'threshold_medium' => $analysis['threshold_medium'],
+                        'formulas' => $analysis['formulas'] ?? [],
+                        'decision_rule' => $analysis['decision_rule'] ?? null,
                         'member_id' => $member->id,
                         'report' => [
                             'id' => $report->id,
@@ -196,18 +208,51 @@ class AspirationGroupingService
                             'kecamatan' => $report->kecamatan,
                             'kategori' => $report->kategori,
                         ],
+                        'preprocessing' => $analysis['preprocessing'][$report->id] ?? null,
                         'corpus_report_count' => $reports->count(),
                         'pairs' => $snapshotPairs,
+                        'manual_review' => $snapshotReview,
                         'result' => [
                             'highest_similarity' => $highest,
+                            'highest_problem_score' => $analysis['reports'][$report->id]['highest_problem_score'] ?? null,
+                            'highest_combined_score' => $analysis['reports'][$report->id]['highest_combined_score'] ?? null,
                             'level' => $level,
                             'is_duplicate' => $level === LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
+                            'manual_review_required' => $reviewInvolved !== [],
                         ],
                         'generated_at' => now()->toIso8601String(),
                     ],
                 ]
             );
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $pairs
+     * @return array<int, array<string, mixed>>
+     */
+    private function snapshotPairs(array $pairs, int $reportId): array
+    {
+        return array_map(function (array $pair) use ($reportId) {
+            $otherId = (int) $pair['left_id'] === $reportId
+                ? (int) $pair['right_id']
+                : (int) $pair['left_id'];
+
+            $other = LaporanMasyarakat::query()->find($otherId);
+
+            return [
+                'compared_laporan_id' => $otherId,
+                'compared_nomor_tiket' => $other?->nomor_tiket,
+                'compared_ringkasan' => $other?->ringkasan,
+                'score' => $pair['score'],
+                'problem_score' => $pair['problem_score'] ?? null,
+                'location_score' => $pair['location_score'] ?? null,
+                'combined_score' => $pair['combined_score'] ?? null,
+                'cosine' => $pair['cosine'] ?? null,
+                'level' => $pair['level'],
+                'evidence' => $pair['evidence'],
+            ];
+        }, $pairs);
     }
 
     /**
@@ -305,6 +350,25 @@ class AspirationGroupingService
                 continue;
             }
 
+            /*
+             * Aspirasi utama ditentukan otomatis dari waktu masuk laporan,
+             * bukan dari ID. Laporan yang paling dahulu masuk menjadi
+             * aspirasi utama; ID hanya dipakai sebagai penentu bila waktu
+             * masuknya sama.
+             */
+            $clusterReports = collect($cluster)
+                ->map(fn (int $reportId) => $reports->firstWhere('id', $reportId))
+                ->filter();
+            $mainReport = $clusterReports->sort(function (LaporanMasyarakat $left, LaporanMasyarakat $right) {
+                $leftTime = $left->created_at?->getTimestamp() ?? PHP_INT_MAX;
+                $rightTime = $right->created_at?->getTimestamp() ?? PHP_INT_MAX;
+
+                return $leftTime === $rightTime
+                    ? (int) $left->id <=> (int) $right->id
+                    : $leftTime <=> $rightTime;
+            })->first();
+            $mainId = (int) ($mainReport?->id ?? $cluster[0]);
+
             $kode = 'KLP-'.str_pad((string) $sequence++, 2, '0', STR_PAD_LEFT);
 
             while (LaporanSimilarityGroup::query()
@@ -324,6 +388,7 @@ class AspirationGroupingService
                 'dprd_member_id' => $member->id,
                 'kode' => $kode,
                 'status' => LaporanSimilarityGroup::STATUS_MENUNGGU,
+                'main_laporan_id' => $mainId,
                 'algorithm_version' => $analysis['algorithm_version'],
                 'threshold_high' => $analysis['threshold_high'],
                 'threshold_medium' => $analysis['threshold_medium'],
@@ -333,6 +398,8 @@ class AspirationGroupingService
                     'threshold_problem' => $analysis['threshold_problem'] ?? $analysis['threshold_high'],
                     'threshold_location' => $analysis['threshold_location'] ?? null,
                     'threshold_medium' => $analysis['threshold_medium'],
+                    'formulas' => $analysis['formulas'] ?? [],
+                    'decision_rule' => $analysis['decision_rule'] ?? null,
                     'member_id' => $member->id,
                     'report_ids' => $cluster,
                     'pairs' => $clusterPairs,
@@ -368,7 +435,9 @@ class AspirationGroupingService
                 }
 
                 $this->syncMembership($group, $reportId, [
-                    'peran' => LaporanSimilarityGroupMember::PERAN_ANGGOTA,
+                    'peran' => $reportId === $mainId
+                        ? LaporanSimilarityGroupMember::PERAN_UTAMA
+                        : LaporanSimilarityGroupMember::PERAN_ANGGOTA,
                     'similarity_level' => $analysis['reports'][$reportId]['level'] ?? null,
                     'similarity_score' => $bestScore > 0 ? $bestScore : null,
                     'evidence' => $bestPair['evidence'] ?? null,
@@ -499,8 +568,30 @@ class AspirationGroupingService
 
         $wasDecided = $target->decided_at !== null || $source->decided_at !== null;
 
+        /*
+         * Bila belum ada keputusan, aspirasi utama mengikuti waktu masuk
+         * paling awal di antara seluruh anggota kelompok gabungan. Bila
+         * sudah diputuskan, pilihan Super Admin dipertahankan.
+         */
+        $mainId = $wasDecided
+            ? ($target->main_laporan_id ?? $source->main_laporan_id)
+            : null;
+
+        if ($mainId === null) {
+            $mainId = LaporanMasyarakat::query()
+                ->whereIn(
+                    'id',
+                    LaporanSimilarityGroupMember::query()
+                        ->where('laporan_similarity_group_id', $target->id)
+                        ->pluck('laporan_masyarakat_id')
+                )
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->value('id');
+        }
+
         $target->forceFill([
-            'main_laporan_id' => $target->main_laporan_id ?? $source->main_laporan_id,
+            'main_laporan_id' => $mainId,
             'status' => $wasDecided
                 ? LaporanSimilarityGroup::STATUS_DIPUTUSKAN
                 : $target->status,
@@ -509,6 +600,19 @@ class AspirationGroupingService
             'catatan' => trim((string) $target->catatan."\nKelompok ".$source->kode.' digabungkan ke kelompok ini.')
                 ?: null,
         ])->save();
+
+        if ($mainId !== null) {
+            LaporanSimilarityGroupMember::query()
+                ->where('laporan_similarity_group_id', $target->id)
+                ->where('laporan_masyarakat_id', $mainId)
+                ->update(['peran' => LaporanSimilarityGroupMember::PERAN_UTAMA]);
+
+            LaporanSimilarityGroupMember::query()
+                ->where('laporan_similarity_group_id', $target->id)
+                ->where('laporan_masyarakat_id', '<>', $mainId)
+                ->where('peran', LaporanSimilarityGroupMember::PERAN_UTAMA)
+                ->update(['peran' => LaporanSimilarityGroupMember::PERAN_ANGGOTA]);
+        }
 
         $source->forceFill([
             'status' => LaporanSimilarityGroup::STATUS_DIBUBARKAN,

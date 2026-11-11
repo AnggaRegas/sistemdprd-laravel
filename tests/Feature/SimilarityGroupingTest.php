@@ -94,8 +94,8 @@ class SimilarityGroupingTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
-            ->assertSee('Aspirasi Mirip Ditemukan')
-            ->assertSee('Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.')
+            ->assertSee('Aspirasi Utama')
+            ->assertSee('Ada Kemiripan')
             ->assertSee('Bandingkan')
             ->assertSee('Perbandingan Aspirasi')
             ->assertSee('Ditemukan 2 aspirasi serupa')
@@ -103,8 +103,6 @@ class SimilarityGroupingTest extends TestCase
             ->assertSee('Aspirasi Baru')
             ->assertSee('Aspirasi yang Mirip')
             ->assertSee('Akan Dijadikan Aspirasi Utama')
-            ->assertSee('Lokasi')
-            ->assertSee('Inti masalah')
             ->assertSee('Simpan sebagai Arsip Terkait')
             ->assertSee('Pilih sebagai Aspirasi Utama')
             ->assertSee('Aspirasi lainnya tetap tersimpan sebagai arsip terkait');
@@ -137,7 +135,7 @@ class SimilarityGroupingTest extends TestCase
             ->assertDontSee('Bandingkan');
     }
 
-    public function test_same_problem_with_different_address_is_flagged_as_similar(): void
+    public function test_same_problem_with_different_address_requires_manual_review_and_is_not_auto_grouped(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
@@ -149,17 +147,21 @@ class SimilarityGroupingTest extends TestCase
 
         app(AspirationGroupingService::class)->regroupMember($member, $admin);
 
-        $this->assertSame(1, LaporanSimilarityGroup::query()->count());
-        $this->assertSame(1, \App\Models\LaporanSimilarityResult::query()->count());
+        // Gerbang AND: alamat berbeda tidak membentuk kelompok otomatis.
+        $this->assertSame(0, LaporanSimilarityGroup::query()->count());
 
+        // Hasil disimpan untuk peninjauan manual dengan skor cosine murni.
+        $this->assertSame(1, \App\Models\LaporanSimilarityResult::query()->count());
         $result = \App\Models\LaporanSimilarityResult::query()->firstOrFail();
         $this->assertEquals(1.0, (float) $result->similarity_score);
+        $this->assertSame(LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU, $result->similarity_level);
+        $this->assertTrue($result->evidence['manual_review_required'] ?? false);
 
+        // Tidak diberi label kemiripan tinggi otomatis pada tabel admin.
         $this->actingAs($admin)
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
-            ->assertSee('Aspirasi Mirip')
-            ->assertSee('Bandingkan');
+            ->assertDontSee('Ada Kemiripan');
     }
 
     public function test_different_location_and_problem_is_not_flagged(): void
@@ -181,7 +183,7 @@ class SimilarityGroupingTest extends TestCase
         $this->assertSame(0, \App\Models\LaporanSimilarityResult::query()->count());
     }
 
-    public function test_missing_location_information_still_detects_same_problem(): void
+    public function test_missing_location_information_requires_manual_review_and_is_not_auto_grouped(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
@@ -193,11 +195,18 @@ class SimilarityGroupingTest extends TestCase
 
         app(AspirationGroupingService::class)->regroupMember($member, $admin);
 
-        $this->assertSame(1, LaporanSimilarityGroup::query()->count());
+        // Alamat tidak lengkap tidak boleh otomatis dianggap mirip tinggi.
+        $this->assertSame(0, LaporanSimilarityGroup::query()->count());
+
         $this->assertSame(1, \App\Models\LaporanSimilarityResult::query()->count());
+        $result = \App\Models\LaporanSimilarityResult::query()->firstOrFail();
+        $this->assertEquals(1.0, (float) $result->similarity_score);
+        $this->assertSame(LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU, $result->similarity_level);
+        $this->assertSame('insufficient', $result->evidence['location_status'] ?? null);
+        $this->assertTrue($result->evidence['manual_review_required'] ?? false);
     }
 
-    public function test_location_words_inside_short_problem_do_not_hide_the_same_issue(): void
+    public function test_location_words_inside_short_problem_require_both_thresholds(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
@@ -212,8 +221,8 @@ class SimilarityGroupingTest extends TestCase
 
         $this->report($member, [
             'nomor_tiket' => 'LPR-SIM-002',
-            'ringkasan' => 'permasalahn jalanan rusak',
-            'isi' => 'permasalahn jalanan rusak',
+            'ringkasan' => 'jalanan rusak parah di petta oddo',
+            'isi' => 'jalanan rusak parah di petta oddo',
             'pelapor_alamat' => 'jl petta oddo',
             'kecamatan' => self::KECAMATAN,
         ]);
@@ -224,7 +233,7 @@ class SimilarityGroupingTest extends TestCase
 
         $pair = \App\Models\LaporanSimilarityResult::query()->firstOrFail();
         $this->assertGreaterThanOrEqual(0.70, (float) $pair->evidence['location_score']);
-        $this->assertGreaterThanOrEqual(0.35, (float) $pair->evidence['problem_score']);
+        $this->assertGreaterThanOrEqual(0.60, (float) $pair->evidence['problem_score']);
         $this->assertSame(LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI, $pair->similarity_level);
     }
 
@@ -245,7 +254,7 @@ class SimilarityGroupingTest extends TestCase
         $r2 = $this->report($member, [
             'nomor_tiket' => 'LPR-USR-002',
             'pelapor_nama' => 'Pelapor Dua',
-            'pelapor_alamat' => 'Jl. Sudirman No. 5',
+            'pelapor_alamat' => 'Jl. Mappangara No. 5',
             'kecamatan' => 'Bacukiki Barat',
             'ringkasan' => 'jalan rusak di dekat rumah saya tepatnya di jalan mappangara',
             'isi' => 'jalan rusak di dekat rumah saya tepatnya di jalan mappangara',
@@ -254,7 +263,7 @@ class SimilarityGroupingTest extends TestCase
         $r3 = $this->report($member, [
             'nomor_tiket' => 'LPR-USR-003',
             'pelapor_nama' => 'Pelapor Tiga',
-            'pelapor_alamat' => 'Jl. Bau Massepe',
+            'pelapor_alamat' => 'Jl. Mappangara No. 12',
             'kecamatan' => 'Bacukiki Barat',
             'ringkasan' => 'jalan rusak bro di mappangara',
             'isi' => 'jalan rusak bro di mappangara',
@@ -283,12 +292,14 @@ class SimilarityGroupingTest extends TestCase
 
         $this->assertGreaterThanOrEqual(0.60, (float) $pair13->similarity_score);
 
-        // Verifikasi pada halaman Laporan Masyarakat admin: menampilkan persentase kemiripan dan bukan tanda –
+        // Verifikasi pada halaman Laporan Masyarakat admin: badge "Ada Kemiripan"
+        // menggantikan persentase kemiripan pada kolom Kemiripan.
         $this->actingAs($admin)
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
-            ->assertSee('Terdapat 3 Aspirasi Serupa')
-            ->assertSee('100%')
+            ->assertSee('Ada Kemiripan')
+            ->assertDontSee('<strong>100%</strong>', false)
+            ->assertDontSee('similarity-dot')
             ->assertDontSee('class="cell-muted">—</span>', false);
     }
 
@@ -313,7 +324,9 @@ class SimilarityGroupingTest extends TestCase
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
             ->assertDontSee('Aspirasi Mirip Ditemukan')
-            ->assertDontSee('Bandingkan');
+            ->assertDontSee('Bandingkan')
+            ->assertDontSee('Ada Kemiripan')
+            ->assertSee('class="cell-muted">—</span>', false);
     }
 
     public function test_reports_for_different_members_are_not_compared(): void
@@ -343,8 +356,10 @@ class SimilarityGroupingTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
-            ->assertSee('Terdapat 3 Aspirasi Serupa')
-            ->assertSee('Kelompok ini memiliki 3 aspirasi yang saling mirip.')
+            ->assertSee('Aspirasi Utama')
+            ->assertSee('Bandingkan')
+            ->assertSee('Ada Kemiripan')
+            ->assertSee('Ditemukan 3 aspirasi serupa')
             ->assertSee('LPR-SIM-001')
             ->assertSee('LPR-SIM-002')
             ->assertSee('LPR-SIM-003')
@@ -554,7 +569,7 @@ class SimilarityGroupingTest extends TestCase
         $this->assertNotSame(LaporanMasyarakat::SIMILARITY_STATUS_UTAMA, $current->similarity_status);
 
         $group = LaporanSimilarityGroup::query()->firstOrFail();
-        $this->assertNull($group->main_laporan_id);
+        $this->assertSame($reports->first()->id, $group->main_laporan_id);
         $this->assertNull($group->decided_at);
     }
 

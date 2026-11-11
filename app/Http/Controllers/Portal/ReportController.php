@@ -1084,7 +1084,12 @@ class ReportController extends Controller
         $level = $result->similarity_level;
 
         if ($level === null) {
-            $level = $this->passesHighSimilarity($locationScore, $problemScore)
+            $level = $this->passesHighSimilarity(
+                $locationScore,
+                $problemScore,
+                $evidence['location_status'] ?? null,
+                $evidence['cosine_similarity'] ?? $evidence['final_score'] ?? null
+            )
                 ? LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI
                 : null;
         }
@@ -1117,20 +1122,39 @@ class ReportController extends Controller
         ];
     }
 
+    /**
+     * Gerbang keputusan yang sama dengan service: skor masalah, status lokasi,
+     * dan skor lokasi harus sama-sama lulus. Baris lama yang belum menyimpan
+     * skor ganda tetap dibaca memakai skor cosine agar tidak hilang.
+     */
     private function passesHighSimilarity(
         mixed $locationScore,
-        mixed $problemScore
+        mixed $problemScore,
+        mixed $locationStatus = null,
+        mixed $cosineScore = null
     ): bool {
-        if ($problemScore === null) {
-            return false;
-        }
-
-        $prob = (float) $problemScore;
-        $loc = $locationScore !== null ? (float) $locationScore : 0.0;
         $probThreshold = (float) config('aspiration_similarity.problem_threshold', 0.60);
         $locThreshold = (float) config('aspiration_similarity.location_threshold', 0.70);
 
-        return $prob >= $probThreshold || ($loc >= $locThreshold && $prob >= 0.35);
+        /*
+         * Fallback data lama: evidence hanya menyimpan cosine_similarity atau
+         * final_score. Tidak ada informasi lokasi sehingga keputusan mengikuti
+         * skor teks seperti perilaku versi sebelumnya.
+         */
+        if ($problemScore === null) {
+            return $cosineScore !== null && (float) $cosineScore >= $probThreshold;
+        }
+
+        if ($locationScore === null) {
+            return false;
+        }
+
+        if ($locationStatus !== null && $locationStatus !== 'ok') {
+            return false;
+        }
+
+        return (float) $problemScore >= $probThreshold
+            && (float) $locationScore >= $locThreshold;
     }
 
     /**

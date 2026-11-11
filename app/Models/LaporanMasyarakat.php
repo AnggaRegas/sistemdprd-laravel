@@ -118,17 +118,25 @@ class LaporanMasyarakat extends Model
 
     public const SIMILARITY_LEVEL_SEDANG = 'sedang';
 
+    /**
+     * Skor masalah memenuhi ambang, tetapi lokasi belum dapat dikonfirmasi.
+     * Hasil ini tidak boleh dipakai sebagai label duplikat otomatis.
+     */
+    public const SIMILARITY_LEVEL_PERLU_TINJAU = 'perlu_ditinjau';
+
     public const SIMILARITY_LEVEL_TIDAK_ADA = 'tidak_ada';
 
     public const SIMILARITY_LEVEL_LABELS = [
         self::SIMILARITY_LEVEL_TINGGI => 'Kemiripan Tinggi',
         self::SIMILARITY_LEVEL_SEDANG => 'Kemiripan Sedang',
+        self::SIMILARITY_LEVEL_PERLU_TINJAU => 'Perlu Peninjauan Manual',
         self::SIMILARITY_LEVEL_TIDAK_ADA => 'Tidak Ada Kemiripan',
     ];
 
     public const SIMILARITY_LEVEL_TONES = [
         self::SIMILARITY_LEVEL_TINGGI => 'danger',
         self::SIMILARITY_LEVEL_SEDANG => 'warning',
+        self::SIMILARITY_LEVEL_PERLU_TINJAU => 'warning',
         self::SIMILARITY_LEVEL_TIDAK_ADA => 'neutral',
     ];
 

@@ -102,15 +102,6 @@ class DashboardController extends Controller
             ],
         ];
 
-        $recentArchives = Arsip::query()
-            ->with(['kategoriArsip', 'member'])
-            ->latest('tanggal')
-            ->latest('id')
-            ->limit(6)
-            ->get()
-            ->map(static fn (Arsip $archive) => PortalPresenter::archive($archive))
-            ->all();
-
         $latestReports = LaporanMasyarakat::query()
             ->with(['member', 'assignee'])
             ->latest('tanggal_laporan')
@@ -123,7 +114,6 @@ class DashboardController extends Controller
         return view('dashboard.admin', [
             'stats' => $stats,
             'chart' => $this->chart(),
-            'recentArchives' => $recentArchives,
             'latestReports' => $latestReports,
             'statusCounts' => $statusCounts,
             'assignmentStats' => $assignmentStats,
@@ -172,25 +162,6 @@ class DashboardController extends Controller
             ->latest('id')
             ->limit(9)
             ->get();
-
-        $riwayatPenugasan = (clone $penugasanBase)
-            ->where('status', LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI)
-            ->with(['laporan'])
-            ->latest('completed_at')
-            ->latest('id')
-            ->limit(6)
-            ->get();
-
-        $rawCounts = (clone $penugasanBase)
-            ->selectRaw('status, COUNT(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
-
-        $followUp = [
-            'Ditugaskan' => (int) ($rawCounts[LaporanPenugasan::STATUS_DITUGASKAN] ?? 0),
-            'Sedang Ditindaklanjuti' => (int) ($rawCounts[LaporanPenugasan::STATUS_SEDANG_DITINDAKLANJUTI] ?? 0),
-            'Selesai Ditindaklanjuti' => (int) ($rawCounts[LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI] ?? 0),
-        ];
 
         $memberReportsDone = LaporanMasyarakat::query()
             ->where('dprd_member_id', $member->id)
@@ -258,67 +229,42 @@ class DashboardController extends Controller
         return view('dashboard.staff', [
             'stats' => $stats,
             'assignment' => $assignment,
-            'followUp' => $followUp,
             'penugasanStats' => $penugasanStats,
             'penugasanAktif' => $penugasanAktif,
-            'riwayatPenugasan' => $riwayatPenugasan,
         ]);
     }
 
     /**
-     * @return array<string, array<int, string>|array<int, int>>
+     * Jumlah aspirasi masyarakat yang masuk per bulan pada tahun berjalan.
+     * Hanya membaca tabel laporan_masyarakat, bukan arsip dokumen/RDP.
+     *
+     * @return array{labels: array<int, string>, series: array<int, int>, year: int}
      */
     private function chart(): array
     {
-        $start = Carbon::now()->startOfMonth()->subMonths(11);
-        $end = Carbon::now()->endOfMonth();
+        $year = (int) Carbon::now()->year;
+        $start = Carbon::create($year, 1, 1)->startOfDay();
+        $end = Carbon::create($year, 12, 31)->endOfDay();
 
-        $archives = Arsip::query()
-            ->whereNotNull('tanggal')
-            ->whereBetween('tanggal', [$start->toDateString(), $end->toDateString()])
-            ->get(['tanggal', 'jenis']);
+        $counts = LaporanMasyarakat::query()
+            ->whereNotNull('tanggal_laporan')
+            ->whereBetween('tanggal_laporan', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('MONTH(tanggal_laporan) as bulan, COUNT(*) as total')
+            ->groupBy('bulan')
+            ->pluck('total', 'bulan');
 
-        $buckets = [];
+        $labels = [];
+        $series = [];
 
-        for ($index = 0; $index < 12; $index++) {
-            $month = $start->copy()->addMonths($index);
-
-            $buckets[$month->format('Y-m')] = [
-                'label' => $month->locale('id')->translatedFormat('M'),
-                'in' => 0,
-                'out' => 0,
-            ];
+        for ($month = 1; $month <= 12; $month++) {
+            $labels[] = Carbon::create($year, $month, 1)->locale('id')->translatedFormat('M');
+            $series[] = (int) $counts->get($month, 0);
         }
-
-        foreach ($archives as $archive) {
-            $key = $archive->tanggal?->format('Y-m');
-
-            if (! $key || ! isset($buckets[$key])) {
-                continue;
-            }
-
-            if ($archive->jenis === Arsip::JENIS_MASUK) {
-                $buckets[$key]['in']++;
-            } elseif ($archive->jenis === Arsip::JENIS_KELUAR) {
-                $buckets[$key]['out']++;
-            }
-        }
-
-        $labels = array_column($buckets, 'label');
-        $incoming = array_column($buckets, 'in');
-        $outgoing = array_column($buckets, 'out');
 
         return [
-            'labels12' => $labels,
-            'labels6' => array_slice($labels, -6),
-            'series12' => [
-                'in' => $incoming,
-                'out' => $outgoing,
-            ],
-            'series6' => [
-                'in' => array_slice($incoming, -6),
-                'out' => array_slice($outgoing, -6),
-            ],
+            'labels' => $labels,
+            'series' => $series,
+            'year' => $year,
         ];
     }
 }

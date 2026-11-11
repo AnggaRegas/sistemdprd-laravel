@@ -167,8 +167,9 @@ class PortalAccessTest extends TestCase
         $this->actingAs($admin)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Belum ada arsip')
-            ->assertSee('Belum ada laporan');
+            ->assertSee('Belum ada aspirasi masyarakat pada tahun')
+            ->assertDontSee('Arsip Terbaru')
+            ->assertDontSee('Laporan Terbaru');
     }
 
     public function test_lists_show_empty_states_without_data(): void
@@ -205,7 +206,8 @@ class PortalAccessTest extends TestCase
             ->get('/dashboard/staf')
             ->assertOk()
             ->assertSee('Tidak ada penugasan aktif')
-            ->assertSee('Belum ada riwayat');
+            ->assertDontSee('Riwayat Penugasan Selesai')
+            ->assertDontSee('Ringkasan status penugasan');
     }
 
     public function test_public_pages_do_not_expose_staff_or_internal_login_and_dashboard_links(): void

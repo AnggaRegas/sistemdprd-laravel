@@ -179,7 +179,7 @@ class ArchiveController extends Controller
 
         $archive = DB::transaction(function () use ($validated, $member, $fileData, $request) {
             return Arsip::query()->create([
-                'nomor' => $validated['nomor'],
+                'nomor' => $validated['nomor'] ?? $this->generateNomor(),
                 'nama' => $validated['nama'],
                 'kategori_arsip_id' => $validated['kategori_arsip_id'],
                 'dprd_member_id' => $member?->id,
@@ -232,7 +232,7 @@ class ArchiveController extends Controller
 
         DB::transaction(function () use ($archive, $validated, $member, $fileData) {
             $attributes = [
-                'nomor' => $validated['nomor'],
+                'nomor' => $validated['nomor'] ?? $archive->nomor,
                 'nama' => $validated['nama'],
                 'kategori_arsip_id' => $validated['kategori_arsip_id'],
                 'dprd_member_id' => $member?->id,
@@ -303,6 +303,23 @@ class ArchiveController extends Controller
             $archive->file_name ?: 'arsip-'.$archive->id,
             ['Content-Type' => Storage::disk('local')->mimeType($archive->file_path) ?: 'application/octet-stream']
         );
+    }
+
+    /**
+     * Nomor arsip tidak lagi diisi pengguna pada form tambah. Nilai tetap
+     * dibuat unik karena kolom nomor masih dipakai pada pencarian dan unduhan.
+     */
+    private function generateNomor(): string
+    {
+        $prefix = 'ARS-'.now()->format('Ymd');
+        $sequence = Arsip::withTrashed()->where('nomor', 'like', $prefix.'-%')->count() + 1;
+
+        do {
+            $nomor = $prefix.'-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $sequence++;
+        } while (Arsip::withTrashed()->where('nomor', $nomor)->exists());
+
+        return $nomor;
     }
 
     private function resolveMember(Request $request, mixed $memberId): ?DprdMember

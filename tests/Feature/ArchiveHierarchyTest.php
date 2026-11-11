@@ -565,6 +565,38 @@ class ArchiveHierarchyTest extends TestCase
         ]);
     }
 
+    public function test_category_code_is_generated_automatically_when_creating(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+
+        $this->actingAs($admin)
+            ->get(route('anggota.arsip.kategori.create', $member))
+            ->assertOk()
+            ->assertSee('Tambah Kategori Arsip')
+            ->assertDontSee('Kode Kategori');
+
+        $this->actingAs($admin)
+            ->post(route('anggota.arsip.kategori.store', $member), [
+                'nama' => 'KATEGORI OTOMATIS UJI',
+                'deskripsi' => 'Kategori tanpa kode manual.',
+                'is_active' => '1',
+            ])
+            ->assertRedirect(route('anggota.arsip', $member))
+            ->assertSessionHas('success');
+
+        $category = KategoriArsip::query()->where('nama', 'KATEGORI OTOMATIS UJI')->firstOrFail();
+
+        $this->assertNotNull($category->kode);
+        $this->assertNotSame('', $category->kode);
+        $this->assertSame(strtoupper($category->kode), $category->kode);
+
+        $this->actingAs($admin)
+            ->get(route('anggota.arsip.kategori.edit', [$member, $category]))
+            ->assertOk()
+            ->assertSee('Kode Kategori');
+    }
+
     public function test_administrator_can_crud_categories_and_protected_deletes_keep_data_safe(): void
     {
         $admin = $this->administrator();

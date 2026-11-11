@@ -22,19 +22,12 @@
     <x-admin.page-header
         eyebrow="Detail laporan masyarakat"
         :title="$report->ringkasan"
-        :description="'Tiket '.$report->nomor_tiket.' · '.$report->kecamatan_label"
+        :description="$report->kecamatan_label"
     >
         <a href="{{ $returnUrl }}" class="btn btn-outline-soft">
             <i class="ri-arrow-left-line" aria-hidden="true"></i>
             Kembali ke Daftar Laporan
         </a>
-
-        @if ($needApproval)
-            <a href="#persetujuan" class="btn btn-gold">
-                <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
-                Verifikasi &amp; Disposisi
-            </a>
-        @endif
 
         @if ($isAdministrator)
             <button type="button" class="btn btn-soft-danger" data-bs-toggle="modal" data-bs-target="#deleteReportDetailModal">
@@ -50,7 +43,7 @@
                 <div class="app-card-header">
                     <div>
                         <h2 class="app-card-title">Informasi Laporan</h2>
-                        <p class="app-card-subtitle">Data pelapor dan status penanganan.</p>
+                        <p class="app-card-subtitle">Identitas pelapor dan laporan.</p>
                     </div>
                     <x-admin.status-badge :status="$report->status_label" />
                 </div>
@@ -59,14 +52,6 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <dl class="detail-list">
-                                <div class="detail-row">
-                                    <dt>Nomor tiket</dt>
-                                    <dd>{{ $report->nomor_tiket }}</dd>
-                                </div>
-                                <div class="detail-row">
-                                    <dt>Tanggal laporan</dt>
-                                    <dd>{{ \App\Support\PortalData::date($report->tanggal_laporan?->toDateString(), true) }}</dd>
-                                </div>
                                 <div class="detail-row">
                                     <dt>Tanggal masuk</dt>
                                     <dd>{{ \App\Support\PortalData::dateTime($report->created_at) }}</dd>
@@ -122,10 +107,6 @@
                                         @endif
                                     </dd>
                                 </div>
-                                <div class="detail-row">
-                                    <dt>Ditutup pada</dt>
-                                    <dd>{{ $report->ditutup_at ? \App\Support\PortalData::dateTime($report->ditutup_at) : '—' }}</dd>
-                                </div>
                             </dl>
                         </div>
                     </div>
@@ -159,7 +140,7 @@
                     ->first(static fn ($assignment) => $assignment->released_at === null);
             @endphp
 
-            @if ($activeAssignment)
+            @if ($activeAssignment && $isStaff)
                 <div class="app-card mb-3">
                     <div class="app-card-header">
                         <div>
@@ -345,7 +326,7 @@
         </div>
 
         <div class="col-xl-4">
-            @if ($isAdministrator)
+            @if ($isAdministrator && $needApproval)
                 <div class="app-card mb-3" id="persetujuan">
                     <div class="app-card-header">
                         <div>
@@ -412,7 +393,7 @@
 
                                 <button type="submit" class="btn btn-gold w-100">
                                     <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
-                                    {{ $report->disetujui_at ? 'Disposisi Ulang' : 'Setujui &amp; Disposisikan' }}
+                                    Setuju
                                 </button>
                             </form>
                         @else
@@ -424,152 +405,6 @@
                     </div>
                 </div>
 
-                <div class="app-card" id="status">
-                    <div class="app-card-header">
-                        <div>
-                            <h2 class="app-card-title">Status &amp; Tindak Lanjut</h2>
-                            <p class="app-card-subtitle">Hanya transisi status yang sah yang ditampilkan.</p>
-                        </div>
-                    </div>
-
-                    <div class="app-card-body">
-                        @if ($errors->status->any())
-                            <div class="alert alert-danger app-alert mb-3" role="alert">
-                                <i class="ri-error-warning-line" aria-hidden="true"></i>
-                                <div>
-                                    <strong>Status belum dapat disimpan.</strong>
-                                    <ul class="mb-0 mt-1 ps-3">
-                                        @foreach ($errors->status->all() as $message)
-                                            <li>{{ $message }}</li>
-                                        @endforeach
-                                    </ul>
-                                </div>
-                            </div>
-                        @endif
-
-                        <form method="POST" action="{{ route('laporan.status.update', $report) }}">
-                            @csrf
-                            @method('PATCH')
-                            <input type="hidden" name="return_to" value="{{ $returnUrl }}">
-
-                            <div class="mb-3">
-                                <label class="form-label" for="reportStatus">Status Laporan</label>
-                                <select id="reportStatus" name="status" class="form-select">
-                                    @foreach ($statusOptions as $value => $label)
-                                        <option value="{{ $value }}" @selected(old('status', $report->status) === $value)>{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label" for="reportStatusNote">Catatan Tindak Lanjut</label>
-                                <textarea id="reportStatusNote" name="catatan" rows="4" maxlength="2000" class="form-control" placeholder="Tuliskan hasil koordinasi atau alasan perubahan status.">{{ old('catatan', $report->catatan_penyelesaian) }}</textarea>
-                            </div>
-
-                            <button type="submit" class="btn btn-emerald w-100">
-                                <i class="ri-check-double-line" aria-hidden="true"></i>
-                                Simpan Status
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="app-card mt-3" id="kemiripan">
-                    <div class="app-card-header">
-                        <div>
-                            <h2 class="app-card-title">Kemiripan Aspirasi</h2>
-                            <p class="app-card-subtitle">Status keputusan dan aspirasi lain yang terdeteksi mirip.</p>
-                        </div>
-                    </div>
-
-                    <div class="app-card-body">
-                        <div class="d-flex flex-wrap gap-2 mb-3">
-                            @if ($report->similarity_status)
-                                <span class="status-badge status-{{ $report->is_duplicate_merged ? 'danger' : 'info' }}">
-                                    {{ $report->similarity_status_label }}
-                                </span>
-                            @elseif (! empty($similarityMatches))
-                                <span class="status-badge status-warning">Aspirasi Mirip Ditemukan</span>
-                            @endif
-                            @if ($report->similarityGroup)
-                                <span class="status-badge status-neutral">Kelompok {{ $report->similarityGroup->kode }}</span>
-                            @endif
-                        </div>
-
-                        @if ($report->duplicateOf)
-                            <p class="cell-sub mb-2">
-                                <i class="ri-link" aria-hidden="true"></i>
-                                Digabungkan ke aspirasi utama
-                                <a href="{{ route('laporan.show', ['laporan' => $report->duplicateOf, 'return_to' => $returnUrl]) }}">
-                                    {{ $report->duplicateOf->nomor_tiket }}
-                                </a>.
-                            </p>
-
-                            @if ($isAdministrator)
-                                <form method="POST" action="{{ route('laporan.kemiripan.decide', $report) }}" class="mb-2">
-                                    @csrf
-                                    <input type="hidden" name="action" value="tetap_terpisah">
-                                    <input type="hidden" name="selected_ids[]" value="{{ $report->id }}">
-                                    <input type="hidden" name="return_to" value="{{ $returnUrl }}">
-                                    <button type="submit" class="btn btn-outline-soft btn-sm">
-                                        <i class="ri-link-unlink" aria-hidden="true"></i>
-                                        Bukan Duplikat / Pisahkan
-                                    </button>
-                                </form>
-                            @endif
-                        @endif
-
-                        @if (! empty($similarityMatches))
-                            <p class="cell-sub mb-2">
-                                Mirip dengan {{ collect($similarityMatches)->pluck('nomor_tiket')->filter()->implode(', ') }}.
-                            </p>
-
-                            <ul class="similarity-mini-list">
-                                @foreach ($similarityMatches as $match)
-                                    <li>
-                                        <a href="{{ route('laporan.show', ['laporan' => $match['id'], 'return_to' => $returnUrl]) }}">
-                                            <strong>{{ $match['nomor_tiket'] }}</strong>
-                                            <span class="status-badge status-danger">
-                                                {{ number_format($match['score'] * 100, 1, ',', '.') }}%
-                                            </span>
-                                            @if ($match['location_score'] !== null && $match['problem_score'] !== null)
-                                                <span class="d-block cell-sub">
-                                                    Lokasi {{ number_format($match['location_score'] * 100, 1, ',', '.') }}%
-                                                    · Inti permasalahan {{ number_format($match['problem_score'] * 100, 1, ',', '.') }}%
-                                                </span>
-                                            @endif
-                                            <span class="d-block cell-sub">{{ \Illuminate\Support\Str::limit($match['ringkasan'], 90) }}</span>
-                                        </a>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @endif
-
-                        @if ($report->similarity_note)
-                            <p class="cell-sub mt-2 mb-0"><strong>Catatan keputusan:</strong> {{ $report->similarity_note }}</p>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="app-card mt-3" id="analisis">
-                    <div class="app-card-header">
-                        <div>
-                            <h2 class="app-card-title">Analisis Kemiripan</h2>
-                            <p class="app-card-subtitle">Riwayat deteksi duplikasi aspirasi ini.</p>
-                        </div>
-                    </div>
-
-                    <div class="app-card-body">
-                        <p class="cell-muted" style="font-size: 11px; line-height: 1.8;">
-                            Rincian perhitungan TF-IDF dan cosine similarity disimpan saat aspirasi masuk dan tidak dihitung ulang.
-                        </p>
-
-                        <a href="{{ route('laporan.analisis', $report) }}" class="btn btn-outline-soft w-100">
-                            <i class="ri-pulse-line" aria-hidden="true"></i>
-                            Lihat Rincian Analisis
-                        </a>
-                    </div>
-                </div>
             @elseif ($isStaff)
                 <div class="app-card" id="status">
                     <div class="app-card-header">

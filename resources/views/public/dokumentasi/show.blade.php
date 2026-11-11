@@ -71,7 +71,7 @@
                 <img
                     src="{{ \Illuminate\Support\Facades\Storage::url($gallery->cover_image) }}"
                     alt="{{ $gallery->title }}"
-                    class="h-[220px] w-full rounded-2xl object-cover sm:h-[420px]"
+                    class="h-[220px] w-full rounded-2xl object-cover object-center sm:h-[420px]"
                 >
             @else
                 <div class="relative flex h-[200px] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#0e3b31] via-[#124437] to-[#082a23] text-[#e6c47d]/30 sm:h-[300px]">
@@ -133,7 +133,7 @@
                                     src="{{ \Illuminate\Support\Facades\Storage::url($photo->image_path) }}"
                                     alt="{{ $photoCaption !== '' ? $photoCaption : $gallery->title }}"
                                     loading="lazy"
-                                    class="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                                    class="aspect-[4/3] w-full object-cover object-center transition duration-500 group-hover:scale-[1.03]"
                                 >
 
                                 <span class="pointer-events-none absolute inset-0 bg-[#082a23]/0 transition duration-300 group-hover:bg-[#082a23]/20" aria-hidden="true"></span>
@@ -191,7 +191,7 @@
                                         src="{{ \Illuminate\Support\Facades\Storage::url($otherGallery->cover_image) }}"
                                         alt="{{ $otherGallery->title }}"
                                         loading="lazy"
-                                        class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                                        class="h-full w-full object-cover object-center transition duration-500 group-hover:scale-[1.04]"
                                     >
                                 @else
                                     <div class="absolute inset-0 bg-gradient-to-br from-[#0e3b31] via-[#124437] to-[#082a23]">

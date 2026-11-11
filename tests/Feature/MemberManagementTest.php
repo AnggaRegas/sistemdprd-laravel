@@ -204,8 +204,7 @@ class MemberManagementTest extends TestCase
         $this->actingAs($admin)
             ->get(route('anggota.index'))
             ->assertOk()
-            ->assertSee('Nama Staf Dari Database')
-            ->assertSee('Belum ditugaskan');
+            ->assertSee('Nama Staf Dari Database');
     }
 
     public function test_administrator_can_create_and_edit_member(): void

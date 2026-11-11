@@ -297,6 +297,138 @@
         </div>
     </footer>
 
+    <script>
+        /*
+         * Navigasi anchor halaman publik: awal section diposisikan tepat di
+         * bawah navbar memakai tinggi bar navigasi aktual. Offset dihitung
+         * dari bar navigasi saja (bukan seluruh header) agar panel menu mobile
+         * yang sedang terbuka tidak ikut menambah jarak.
+         */
+        (function () {
+            var skipHashes = ['#', '#konten'];
+            var pendingScroll = null;
+
+            function headerBar() {
+                var header = document.querySelector('body > header');
+
+                if (!header) {
+                    return null;
+                }
+
+                return header.querySelector('nav > .container-public') || header;
+            }
+
+            function navOffset() {
+                var bar = headerBar();
+                var height = bar ? bar.getBoundingClientRect().height : 78;
+
+                return Math.round(height || 78) + 16;
+            }
+
+            function performScroll(target, smooth) {
+                var top = window.scrollY + target.getBoundingClientRect().top - navOffset();
+                var maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                top = Math.max(0, Math.min(top, maxTop));
+
+                window.scrollTo({ top: top, behavior: smooth ? 'smooth' : 'auto' });
+            }
+
+            function scrollToTarget(target, smooth) {
+                if (!target) {
+                    return;
+                }
+
+                var header = document.querySelector('body > header');
+                var bar = headerBar();
+                var headerHeight = header ? header.getBoundingClientRect().height : 0;
+                var barHeight = bar ? bar.getBoundingClientRect().height : 0;
+
+                /*
+                 * Panel menu mobile masih terbuka menambah tinggi header.
+                 * Tunggu panel menutup agar section tidak terdorong ke bawah.
+                 */
+                if (headerHeight - barHeight > 8) {
+                    window.clearTimeout(pendingScroll);
+                    pendingScroll = window.setTimeout(function () {
+                        pendingScroll = null;
+                        performScroll(target, smooth);
+                    }, 240);
+
+                    return;
+                }
+
+                window.clearTimeout(pendingScroll);
+                pendingScroll = null;
+                performScroll(target, smooth);
+            }
+
+            function targetFromHash(hash) {
+                if (!hash || skipHashes.indexOf(hash) !== -1) {
+                    return null;
+                }
+
+                return document.getElementById(hash.slice(1));
+            }
+
+            document.addEventListener('click', function (event) {
+                var link = event.target.closest ? event.target.closest('a[href*="#"]') : null;
+
+                if (!link) {
+                    return;
+                }
+
+                var href = link.getAttribute('href') || '';
+                var hashIndex = href.indexOf('#');
+
+                if (hashIndex === -1) {
+                    return;
+                }
+
+                var hash = href.slice(hashIndex);
+                var target = targetFromHash(hash);
+
+                if (!target) {
+                    return;
+                }
+
+                var url;
+
+                try {
+                    url = new URL(link.href, window.location.href);
+                } catch (error) {
+                    return;
+                }
+
+                if (url.pathname !== window.location.pathname || url.search !== window.location.search) {
+                    return;
+                }
+
+                event.preventDefault();
+                scrollToTarget(target, true);
+
+                if (window.history && window.history.pushState) {
+                    window.history.pushState(null, '', hash);
+                }
+            });
+
+            function scrollToCurrentHash(smooth) {
+                scrollToTarget(targetFromHash(window.location.hash), smooth);
+            }
+
+            window.addEventListener('load', function () {
+                if (window.location.hash) {
+                    window.setTimeout(function () {
+                        scrollToCurrentHash(false);
+                    }, 80);
+                }
+            });
+
+            window.addEventListener('hashchange', function () {
+                scrollToCurrentHash(false);
+            });
+        }());
+    </script>
+
     @stack('scripts')
 </body>
 </html>

@@ -14,10 +14,12 @@
         title="Dashboard Staf Pendamping"
         description="Fokus pada anggota dewan yang Anda dampingi, laporan yang ditugaskan, dan pekerjaan yang perlu diselesaikan."
     >
-        <button type="button" class="btn btn-outline-soft" data-demo-toast="Ekspor tugas belum terhubung ke backend. Ini hanya pratinjau tampilan.">
+        <a href="{{ route('dashboard.staf.ekspor') }}"
+           class="btn btn-outline-soft"
+           data-staff-export>
             <i class="ri-download-2-line" aria-hidden="true"></i>
             Ekspor Tugas
-        </button>
+        </a>
         <a href="{{ route('arsip.index', ['modal' => 'tambah']) }}" class="btn btn-emerald">
             <i class="ri-add-line" aria-hidden="true"></i>
             Tambah Arsip
@@ -171,45 +173,6 @@
         </div>
 
         <div class="col-xl-4">
-            <div class="app-card mb-3">
-                <div class="app-card-header">
-                    <div>
-                        <h2 class="app-card-title">Tindak Lanjut</h2>
-                        <p class="app-card-subtitle">Ringkasan status penugasan</p>
-                    </div>
-                </div>
-
-                <div class="app-card-body">
-                    @php
-                        $followUpTotal = array_sum($followUp);
-                        $followUpColors = [
-                            'Selesai Ditindaklanjuti' => '#16794f',
-                            'Sedang Ditindaklanjuti' => '#2c6aa0',
-                            'Ditugaskan' => '#c9a45c',
-                        ];
-                    @endphp
-
-                    @foreach ($followUp as $status => $count)
-                        <div class="{{ $loop->last ? '' : 'mb-3' }}">
-                            <div class="status-progress-row">
-                                <span>{{ $status }}</span>
-                                <strong>{{ $count }}</strong>
-                            </div>
-                            <div class="progress-modern">
-                                <div class="progress-bar" role="progressbar"
-                                     style="width: {{ round(($count / max($followUpTotal, 1)) * 100) }}%; background: {{ $followUpColors[$status] ?? '#93a09a' }};"
-                                     aria-valuenow="{{ $count }}" aria-valuemin="0" aria-valuemax="{{ $followUpTotal }}"
-                                     aria-label="{{ $status }}: {{ $count }} penugasan"></div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-
-                <div class="app-card-footer">
-                    <span class="fs-10 text-muted-soft">Total {{ $followUpTotal }} penugasan pada tampilan ini.</span>
-                </div>
-            </div>
-
             <div class="app-card">
                 <div class="app-card-header">
                     <div>
@@ -254,66 +217,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="app-card mb-3">
-        <div class="app-card-header">
-            <div>
-                <h2 class="app-card-title">Riwayat Penugasan Selesai</h2>
-                <p class="app-card-subtitle">Penugasan yang sudah Anda tandai selesai ditindaklanjuti</p>
-            </div>
-            <a href="{{ route('penugasan.index', ['status' => \App\Models\LaporanPenugasan::STATUS_SELESAI_DITINDAKLANJUTI]) }}" class="app-card-link">
-                Lihat semua
-                <i class="ri-arrow-right-line" aria-hidden="true"></i>
-            </a>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table-modern">
-                <thead>
-                    <tr>
-                        <th scope="col">Penugasan</th>
-                        <th scope="col" class="d-none d-md-table-cell">Hasil Tindak Lanjut</th>
-                        <th scope="col" class="d-none d-sm-table-cell">Tanggal Selesai</th>
-                        <th scope="col" class="text-end">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($riwayatPenugasan as $penugasan)
-                        <tr>
-                            <td>
-                                <span class="cell-title">{{ $penugasan->laporan?->ringkasan ?? '—' }}</span>
-                                <span class="cell-sub">{{ $penugasan->laporan?->nomor_tiket ?? '—' }}</span>
-                            </td>
-                            <td class="d-none d-md-table-cell">
-                                <span class="cell-muted">{{ \Illuminate\Support\Str::limit($penugasan->hasil_tindak_lanjut, 90) }}</span>
-                            </td>
-                            <td class="d-none d-sm-table-cell">
-                                <span class="cell-muted">{{ \App\Support\PortalData::dateTime($penugasan->completed_at) }}</span>
-                            </td>
-                            <td>
-                                <div class="table-actions">
-                                    <a href="{{ route('penugasan.show', $penugasan) }}" class="btn btn-outline-soft btn-sm">
-                                        <i class="ri-eye-line" aria-hidden="true"></i>
-                                        Detail
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" class="table-empty">
-                                <x-admin.empty-state
-                                    icon="ri-history-line"
-                                    title="Belum ada riwayat"
-                                    description="Penugasan yang selesai akan tercatat di sini."
-                                />
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
         </div>
     </div>
 

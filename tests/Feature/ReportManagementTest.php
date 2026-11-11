@@ -121,18 +121,20 @@ class ReportManagementTest extends TestCase
             ->get(route('laporan.index', ['anggota' => $member->id]))
             ->assertOk()
             ->assertSee('Laporan berpotensi duplikat')
-            ->assertSee('Aspirasi Mirip Ditemukan')
-            ->assertSee('Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.')
-            ->assertSee('Bandingkan');
+            ->assertSee('Ada Kemiripan')
+            ->assertDontSee('<span class="cell-muted">95%</span>', false)
+            ->assertDontSee('similarity-dot')
+            ->assertDontSee('Aspirasi Mirip Ditemukan')
+            ->assertDontSee('Bandingkan');
 
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
             ->assertSee('Laporan berpotensi duplikat')
-            ->assertSee('Kemiripan Aspirasi')
-            ->assertSee('Aspirasi Mirip Ditemukan')
-            ->assertSee('LPR-DUP-000')
-            ->assertSee('95,0%')
+            ->assertDontSee('Kemiripan Aspirasi')
+            ->assertDontSee('Aspirasi Mirip Ditemukan')
+            ->assertDontSee('LPR-DUP-000')
+            ->assertDontSee('95,0%')
             ->assertDontSee('Tidak Ada Kemiripan');
     }
 
@@ -690,5 +692,60 @@ class ReportManagementTest extends TestCase
             ->assertOk()
             ->assertDontSee('value="/dashboard"', false)
             ->assertDontSee('return_to=%2Fdashboard', false);
+    }
+
+    public function test_waiting_report_detail_uses_single_setuju_action_without_top_verification_button(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create();
+        User::factory()->staff($member)->create();
+
+        $report = $this->report([
+            'nomor_tiket' => 'LPR-SETUJU-001',
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_MENUNGGU_PENUGASAN,
+            'disetujui_at' => null,
+            'assigned_to' => null,
+            'assigned_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('laporan.show', $report))
+            ->assertOk()
+            ->assertSee('Kembali ke Daftar Laporan')
+            ->assertSee('Setuju')
+            ->assertDontSee('SETUJUI')
+            ->assertDontSee('Setujui &amp; Disposisikan', false)
+            ->assertDontSee('href="#persetujuan"', false)
+            ->assertSee('id="persetujuan"', false);
+    }
+
+    public function test_assigned_report_detail_hides_assignment_and_reassignment_controls(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Ditugaskan']);
+        $staff = User::factory()->staff($member)->create(['name' => 'Staf Penerima Tugas']);
+
+        $report = $this->report([
+            'nomor_tiket' => 'LPR-DITUGASKAN-001',
+            'dprd_member_id' => $member->id,
+            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
+            'disetujui_at' => now(),
+            'disetujui_oleh' => $admin->id,
+            'assigned_to' => $staff->id,
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('laporan.show', $report))
+            ->assertOk()
+            ->assertSee('Kembali ke Daftar Laporan')
+            ->assertSee('Ditugaskan')
+            ->assertSee('Staf Penerima Tugas')
+            ->assertDontSee('Penugasan Tindak Lanjut')
+            ->assertDontSee('Verifikasi &amp; Disposisi', false)
+            ->assertDontSee('Disposisi Ulang')
+            ->assertDontSee('id="persetujuan"', false)
+            ->assertDontSee('href="#persetujuan"', false);
     }
 }

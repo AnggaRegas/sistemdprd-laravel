@@ -54,9 +54,10 @@ class CommissionArchiveTest extends TestCase
             ->get(route('komisi.index'))
             ->assertOk()
             ->assertSee('Arsip Komisi')
-            ->assertSee('Komisi 1')
-            ->assertSee('Pemerintahan, Hukum, dan Ketertiban')
-            ->assertSee('Buka Folder RDP');
+            ->assertSee('Buka Folder RDP')
+            ->assertSee('Tambah Komisi')
+            ->assertSee('Tambah RDP')
+            ->assertDontSee('Daftar RDP');
     }
 
     public function test_administrator_can_create_commission(): void

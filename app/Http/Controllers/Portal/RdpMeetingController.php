@@ -119,9 +119,9 @@ class RdpMeetingController extends Controller
                 return RdpMeeting::query()->create([
                     'dprd_commission_id' => $commission->id,
                     'title' => $validated['title'],
-                    'code' => $validated['code'] ?: null,
+                    'code' => ($validated['code'] ?? null) ?: $this->nextCode($commission),
                     'meeting_date' => $validated['meeting_date'],
-                    'start_time' => $validated['start_time'] ?: null,
+                    'start_time' => ($validated['start_time'] ?? null) ?: now()->format('H:i'),
                     'location' => $validated['location'] ?: null,
                     'description' => $validated['description'] ?: null,
                     'status' => $validated['status'],
@@ -214,9 +214,9 @@ class RdpMeetingController extends Controller
                 $meeting->update([
                     'dprd_commission_id' => $targetCommission->id,
                     'title' => $validated['title'],
-                    'code' => $validated['code'] ?: null,
+                    'code' => ($validated['code'] ?? null) ?: $meeting->code,
                     'meeting_date' => $validated['meeting_date'],
-                    'start_time' => $validated['start_time'] ?: null,
+                    'start_time' => ($validated['start_time'] ?? null) ?: $meeting->start_time,
                     'location' => $validated['location'] ?: null,
                     'description' => $validated['description'] ?: null,
                     'status' => $validated['status'],
@@ -283,5 +283,21 @@ class RdpMeetingController extends Controller
         }
 
         throw $exception;
+    }
+
+    /**
+     * Nomor RDP dibuat otomatis per komisi dan per tahun berjalan.
+     */
+    private function nextCode(DprdCommission $commission): string
+    {
+        $year = now()->format('Y');
+        $sequence = $commission->rdpMeetings()->withTrashed()->count() + 1;
+
+        do {
+            $code = sprintf('RDP-K%d/%03d/%s', $commission->id, $sequence, $year);
+            $sequence++;
+        } while ($commission->rdpMeetings()->withTrashed()->where('code', $code)->exists());
+
+        return $code;
     }
 }

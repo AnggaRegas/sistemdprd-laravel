@@ -25,7 +25,7 @@
 
                 <div class="app-card-body">
                     <div class="row g-3">
-                        <div class="col-md-8">
+                        <div class="{{ $isEdit ? 'col-md-8' : 'col-12' }}">
                             <label class="form-label" for="nama">Nama Kategori <span class="req">*</span></label>
                             <input type="text" id="nama" name="nama"
                                    value="{{ old('nama', $category->nama ?? '') }}"
@@ -36,16 +36,18 @@
                             @enderror
                         </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label" for="kode">Kode Kategori</label>
-                            <input type="text" id="kode" name="kode"
-                                   value="{{ old('kode', $category->kode ?? '') }}"
-                                   class="form-control @error('kode') is-invalid @enderror"
-                                   maxlength="20" placeholder="RESES">
-                            @error('kode')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
+                        @if ($isEdit)
+                            <div class="col-md-4">
+                                <label class="form-label" for="kode">Kode Kategori</label>
+                                <input type="text" id="kode" name="kode"
+                                       value="{{ old('kode', $category->kode ?? '') }}"
+                                       class="form-control @error('kode') is-invalid @enderror"
+                                       maxlength="20" placeholder="RESES">
+                                @error('kode')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        @endif
 
                         <div class="col-12">
                             <label class="form-label" for="deskripsi">Deskripsi</label>
@@ -93,7 +95,7 @@
                         </div>
                         <div class="detail-row">
                             <dt>Kode</dt>
-                            <dd>{{ old('kode', $category->kode ?? '—') }}</dd>
+                            <dd>{{ $isEdit ? old('kode', $category->kode ?? '—') : 'Dibuat otomatis' }}</dd>
                         </div>
                         <div class="detail-row">
                             <dt>Status</dt>

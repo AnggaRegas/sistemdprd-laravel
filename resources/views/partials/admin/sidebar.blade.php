@@ -66,15 +66,17 @@
                     </a>
                 </li>
 
-                <li>
-                    <a href="{{ route('penugasan.index') }}"
-                       class="sidebar-link {{ request()->routeIs('penugasan.*') ? 'active' : '' }}"
-                       title="{{ $role === 'staff' ? 'Penugasan Saya' : 'Monitoring Penugasan' }}"
-                       @if (request()->routeIs('penugasan.*')) aria-current="page" @endif>
-                        <span class="nav-icon"><i class="ri-task-line" aria-hidden="true"></i></span>
-                        <span class="sidebar-label">{{ $role === 'staff' ? 'Penugasan Saya' : 'Monitoring Penugasan' }}</span>
-                    </a>
-                </li>
+                @if ($role === 'staff')
+                    <li>
+                        <a href="{{ route('penugasan.index') }}"
+                           class="sidebar-link {{ request()->routeIs('penugasan.*') ? 'active' : '' }}"
+                           title="Penugasan Saya"
+                           @if (request()->routeIs('penugasan.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-task-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Penugasan Saya</span>
+                        </a>
+                    </li>
+                @endif
             </ul>
 
             @if ($role === 'admin')

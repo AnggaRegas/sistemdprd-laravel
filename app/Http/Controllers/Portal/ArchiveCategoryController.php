@@ -8,6 +8,7 @@ use App\Models\DprdMember;
 use App\Models\KategoriArsip;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class ArchiveCategoryController extends Controller
@@ -31,7 +32,7 @@ class ArchiveCategoryController extends Controller
         $category = DB::transaction(function () use ($validated) {
             return KategoriArsip::query()->create([
                 'nama' => $validated['nama'],
-                'kode' => $validated['kode'] ?? null,
+                'kode' => $validated['kode'] ?? $this->generateKode($validated['nama']),
                 'deskripsi' => $validated['deskripsi'] ?? null,
                 'is_active' => (bool) ($validated['is_active'] ?? false),
             ]);
@@ -63,7 +64,7 @@ class ArchiveCategoryController extends Controller
 
         $category->update([
             'nama' => $validated['nama'],
-            'kode' => $validated['kode'] ?? null,
+            'kode' => $validated['kode'] ?? $category->kode,
             'deskripsi' => $validated['deskripsi'] ?? null,
             'is_active' => (bool) ($validated['is_active'] ?? false),
         ]);
@@ -105,5 +106,24 @@ class ArchiveCategoryController extends Controller
         return redirect()
             ->route('anggota.arsip', $member)
             ->with('success', 'Kategori '.$nama.' berhasil dihapus.');
+    }
+
+    /**
+     * Kode kategori tidak lagi diisi pengguna pada form tambah. Nilai tetap
+     * dibuat unik karena kolom kode masih dipakai untuk identitas singkat.
+     */
+    private function generateKode(string $nama): string
+    {
+        $base = Str::upper(Str::slug($nama, '-'));
+        $base = $base !== '' ? Str::substr($base, 0, 16) : 'KAT';
+        $kode = $base;
+        $suffix = 2;
+
+        while (KategoriArsip::withTrashed()->where('kode', $kode)->exists()) {
+            $kode = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $kode;
     }
 }

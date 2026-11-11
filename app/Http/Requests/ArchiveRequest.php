@@ -27,7 +27,7 @@ class ArchiveRequest extends FormRequest
 
         return [
             'nomor' => [
-                'required',
+                $archive ? 'required' : 'nullable',
                 'string',
                 'max:100',
                 Rule::unique('arsips', 'nomor')->ignore($archive?->id),
@@ -101,7 +101,7 @@ class ArchiveRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'nomor' => trim((string) $this->input('nomor')),
+            'nomor' => trim((string) $this->input('nomor')) ?: null,
             'nama' => trim((string) $this->input('nama')),
             'deskripsi' => trim((string) $this->input('deskripsi')) ?: null,
         ]);

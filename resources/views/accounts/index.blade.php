@@ -21,10 +21,6 @@
         title="Daftar Akun Pengguna"
         description="Daftar seluruh akun internal dan wewenang pengarsipan."
     >
-        <span class="status-badge status-neutral">
-            <i class="ri-group-line" aria-hidden="true"></i>
-            {{ number_format($summary['total'], 0, ',', '.') }} akun
-        </span>
         <a href="{{ route('akun.create') }}" class="btn btn-emerald">
             <i class="ri-user-add-line" aria-hidden="true"></i>
             Tambah Akun Staf
@@ -86,7 +82,7 @@
     </div>
 
     <div class="app-card filter-card">
-        <form method="GET" action="{{ route('akun.index') }}" class="filter-bar" role="search">
+        <form method="GET" action="{{ route('akun.index') }}" class="filter-bar" role="search" data-live-search>
             <div class="filter-search">
                 <i class="ri-search-line" aria-hidden="true"></i>
                 <input type="search" name="q" value="{{ $filters['q'] }}"
@@ -111,10 +107,6 @@
                     <i class="ri-filter-3-line" aria-hidden="true"></i>
                     Terapkan
                 </button>
-                <a href="{{ route('akun.index') }}" class="filter-reset">
-                    <i class="ri-refresh-line" aria-hidden="true"></i>
-                    Reset
-                </a>
             </div>
         </form>
     </div>

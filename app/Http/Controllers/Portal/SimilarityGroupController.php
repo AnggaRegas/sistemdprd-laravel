@@ -11,6 +11,7 @@ use App\Models\LaporanSimilarityGroup;
 use App\Models\LaporanSimilarityGroupMember;
 use App\Models\LaporanSimilarityResult;
 use App\Services\AspirationGroupingService;
+use App\Services\AspirationSimilarityService;
 use App\Support\SafeReturnUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,8 +30,10 @@ use Illuminate\Validation\ValidationException;
  */
 class SimilarityGroupController extends Controller
 {
-    public function __construct(private AspirationGroupingService $grouping)
-    {
+    public function __construct(
+        private AspirationGroupingService $grouping,
+        private AspirationSimilarityService $similarity
+    ) {
     }
 
     /**
@@ -305,14 +308,21 @@ class SimilarityGroupController extends Controller
                 ->where('kode', $kode)
                 ->exists());
 
+            $meta = $this->similarity->algorithmMeta();
+
             $group = LaporanSimilarityGroup::query()->create([
                 'dprd_member_id' => $report->dprd_member_id,
                 'kode' => $kode,
                 'status' => LaporanSimilarityGroup::STATUS_MENUNGGU,
-                'algorithm_version' => \App\Services\AspirationSimilarityService::ALGORITHM_VERSION,
-                'threshold_high' => (float) config('aspiration_similarity.problem_threshold', 0.70),
-                'threshold_medium' => (float) config('aspiration_similarity.problem_threshold', 0.70),
+                'algorithm_version' => $meta['algorithm_version'],
+                'threshold_high' => $meta['threshold_problem'],
+                'threshold_medium' => $meta['threshold_problem'],
                 'snapshot' => [
+                    'algorithm_version' => $meta['algorithm_version'],
+                    'threshold_problem' => $meta['threshold_problem'],
+                    'threshold_location' => $meta['threshold_location'],
+                    'formulas' => $meta['formulas'],
+                    'decision_rule' => $meta['decision_rule'],
                     'member_id' => $report->dprd_member_id,
                     'report_ids' => $candidateIds,
                     'generated_at' => now()->toIso8601String(),
@@ -626,12 +636,12 @@ class SimilarityGroupController extends Controller
     }
 
     /**
-     * @return array{location: float|null, problem: float|null, combined: float|null}
+     * @return array{location: float|null, problem: float|null, combined: float|null, cosine: float|null}
      */
     private function scoresFor(LaporanMasyarakat $left, LaporanMasyarakat $right): array
     {
         if ((int) $left->id === (int) $right->id) {
-            return ['location' => null, 'problem' => null, 'combined' => null];
+            return ['location' => null, 'problem' => null, 'combined' => null, 'cosine' => null];
         }
 
         $result = LaporanSimilarityResult::query()
@@ -646,15 +656,20 @@ class SimilarityGroupController extends Controller
             ->first();
 
         if (! $result) {
-            return ['location' => null, 'problem' => null, 'combined' => null];
+            return ['location' => null, 'problem' => null, 'combined' => null, 'cosine' => null];
         }
 
         $evidence = is_array($result->evidence) ? $result->evidence : [];
+        $problem = isset($evidence['problem_score'])
+            ? round((float) $evidence['problem_score'], 6)
+            : round((float) $result->similarity_score, 6);
 
         return [
             'location' => isset($evidence['location_score']) ? round((float) $evidence['location_score'], 6) : null,
-            'problem' => isset($evidence['problem_score']) ? round((float) $evidence['problem_score'], 6) : null,
-            'combined' => round((float) $result->similarity_score, 6),
+            'problem' => $problem,
+            // Skor gabungan hanya indikator; bukan dasar keputusan.
+            'combined' => isset($evidence['combined_score']) ? round((float) $evidence['combined_score'], 6) : null,
+            'cosine' => isset($evidence['cosine_similarity']) ? round((float) $evidence['cosine_similarity'], 6) : $problem,
         ];
     }
 

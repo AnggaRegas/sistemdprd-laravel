@@ -25,16 +25,14 @@ class LandingGalleryController extends Controller
         $filters = [
             'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
             'status' => $this->allowedValue($request->query('status'), array_keys(LandingGallery::STATUSES)),
-            'date_from' => $this->validDate($request->query('date_from')),
-            'date_to' => $this->validDate($request->query('date_to')),
+            'date' => $this->validDate($request->query('date')),
         ];
 
         $galleries = LandingGallery::query()
             ->withCount('photos')
             ->when($filters['q'] !== '', fn ($query) => $query->where('title', 'like', "%{$filters['q']}%"))
             ->when($filters['status'] !== null, fn ($query) => $query->where('status', $filters['status']))
-            ->when($filters['date_from'] !== null, fn ($query) => $query->whereDate('activity_date', '>=', $filters['date_from']))
-            ->when($filters['date_to'] !== null, fn ($query) => $query->whereDate('activity_date', '<=', $filters['date_to']))
+            ->when($filters['date'] !== null, fn ($query) => $query->whereDate('activity_date', $filters['date']))
             ->orderByDesc('activity_date')
             ->orderByDesc('id')
             ->paginate(10)

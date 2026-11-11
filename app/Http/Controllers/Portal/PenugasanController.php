@@ -115,6 +115,104 @@ class PenugasanController extends Controller
     }
 
     /**
+     * Ekspor tugas milik staf yang sedang login. Query selalu dibatasi pada
+     * user_id milik staf sehingga tidak mungkin memuat penugasan staf lain.
+     * Filter status dan pencarian mengikuti filter yang aktif di halaman.
+     */
+    public function export(Request $request): StreamedResponse|RedirectResponse
+    {
+        $user = $request->user();
+
+        abort_unless($user?->isStaff(), 403);
+
+        $filters = [
+            'status' => $this->statusFilter($request->query('status')),
+            'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
+        ];
+
+        try {
+            $query = LaporanPenugasan::query()
+                ->where('user_id', $user->id)
+                ->with(['laporan.member'])
+                ->latest('assigned_at')
+                ->latest('id');
+
+            if ($filters['status'] !== '') {
+                $query->where('status', $filters['status']);
+
+                if ($filters['status'] === LaporanPenugasan::STATUS_DITUGASKAN) {
+                    $query->whereNull('released_at');
+                }
+            }
+
+            if ($filters['q'] !== '') {
+                $needle = '%'.Str::lower($filters['q']).'%';
+
+                $query->whereHas('laporan', function ($query) use ($needle) {
+                    $query->whereRaw('LOWER(nomor_tiket) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(ringkasan) LIKE ?', [$needle]);
+                });
+            }
+
+            $assignments = $query->get();
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('dashboard.staf')
+                ->with('error', 'Gagal menyiapkan file ekspor tugas. Silakan coba lagi.');
+        }
+
+        $filename = 'tugas-staf-'.$user->id.'-'.now()->format('Ymd-His').'.csv';
+
+        session()->flash(
+            'success',
+            'Ekspor tugas berhasil dibuat ('.$assignments->count().' penugasan milik Anda).'
+        );
+
+        return response()->streamDownload(function () use ($assignments): void {
+            $handle = fopen('php://output', 'w');
+
+            if ($handle === false) {
+                return;
+            }
+
+            fwrite($handle, "\xEF\xBB\xBF");
+
+            fputcsv($handle, [
+                'Nomor Tiket',
+                'Ringkasan Laporan',
+                'Anggota DPRD',
+                'Status Penugasan',
+                'Ditugaskan Pada',
+                'Mulai Ditindaklanjuti',
+                'Selesai Ditindaklanjuti',
+                'Hasil Tindak Lanjut',
+                'Keterangan Tambahan',
+            ], ';');
+
+            foreach ($assignments as $assignment) {
+                fputcsv($handle, [
+                    $assignment->laporan?->nomor_tiket ?? '',
+                    $assignment->laporan?->ringkasan ?? '',
+                    $assignment->laporan?->member?->nama_lengkap ?? '',
+                    $assignment->status_label,
+                    $assignment->assigned_at?->format('Y-m-d H:i:s') ?? '',
+                    $assignment->started_at?->format('Y-m-d H:i:s') ?? '',
+                    $assignment->completed_at?->format('Y-m-d H:i:s') ?? '',
+                    $assignment->hasil_tindak_lanjut ?? '',
+                    $assignment->keterangan_tambahan ?? '',
+                ], ';');
+            }
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
      * Detail penugasan: hasil tindak lanjut, bukti, dan riwayat waktu.
      * Superadmin membuka semua penugasan, staf hanya penugasannya sendiri.
      */

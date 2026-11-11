@@ -24,10 +24,42 @@ use Illuminate\Support\Facades\DB;
  */
 class AspirationSimilarityService
 {
-    public const ALGORITHM_VERSION = 'dual-score-location-problem-v3';
+    public const ALGORITHM_VERSION = 'tfidf-cosine-dual-gate-v4';
 
     /** Jumlah kata dengan bobot tertinggi yang disimpan per vektor pembanding. */
     private const VECTOR_TERM_LIMIT = 30;
+
+    /**
+     * Kata negasi yang tidak boleh dibuang pada tahap stopword karena dapat
+     * membalik makna aspirasi (mis. "jalan tidak berlubang" vs "jalan
+     * berlubang").
+     *
+     * @var array<int, string>
+     */
+    private const NEGATION_WORDS = ['tidak', 'tak', 'bukan', 'belum', 'tanpa', 'jangan'];
+
+    /** @var object|null */
+    private ?object $stemmer = null;
+
+    /** Cache stemming per proses agar preprocessing tetap cepat. */
+    private static array $stemCache = [];
+
+    /**
+     * Metadata algoritma yang dipakai bersama oleh service dan pengendali.
+     * Nilainya berasal dari fungsi yang benar-benar dipakai perhitungan.
+     *
+     * @return array<string, mixed>
+     */
+    public function algorithmMeta(): array
+    {
+        return [
+            'algorithm_version' => self::ALGORITHM_VERSION,
+            'threshold_problem' => $this->problemThreshold(),
+            'threshold_location' => $this->locationThreshold(),
+            'formulas' => $this->formulas(),
+            'decision_rule' => $this->decisionRule(),
+        ];
+    }
 
     /** Singkatan alamat yang diseragamkan sebelum dibandingkan. */
     private const ADDRESS_REPLACEMENTS = [
@@ -67,19 +99,19 @@ class AspirationSimilarityService
 
     /** @var array<int, string> */
     private const STOPWORDS = [
-        'ada', 'adalah', 'agar', 'akan', 'akhir', 'aku', 'anda', 'antar', 'antara', 'apa', 'apabila',
-        'atau', 'atas', 'bahwa', 'bagi', 'bahkan', 'baru', 'bawah', 'beberapa', 'begitu', 'belum',
-        'berada', 'berbagai', 'berikan', 'bersama', 'bisa', 'bukan', 'dalam', 'dan', 'dapat', 'dari',
-        'daripada', 'demi', 'dengan', 'depan', 'demikian', 'di', 'dia', 'dilakukan', 'dimana', 'diri',
+        'ada', 'adalah', 'agar', 'akan', 'akhir', 'aku', 'amat', 'anda', 'antar', 'antara', 'apa', 'apabila',
+        'atau', 'atas', 'bahwa', 'bagi', 'bahkan', 'banget', 'baru', 'bawah', 'beberapa', 'begitu', 'belakang',
+        'berada', 'berbagai', 'berikan', 'bersama', 'bisa', 'dalam', 'dan', 'dapat', 'dari',
+        'daripada', 'dekat', 'demi', 'dengan', 'depan', 'demikian', 'di', 'dia', 'dilakukan', 'dimana', 'diri',
         'dok', 'dua', 'guna', 'hal', 'hampir', 'hanya', 'harus', 'hingga', 'ia', 'ialah', 'itu', 'jadi',
-        'jangan', 'jika', 'juga', 'jumlah', 'kami', 'kamu', 'karena', 'ke', 'kecuali', 'kedua', 'kembali',
+        'jika', 'juga', 'jumlah', 'kami', 'kamu', 'karena', 'ke', 'kecuali', 'kedua', 'kembali',
         'kemudian', 'kepada', 'ketika', 'kita', 'lalu', 'lain', 'lainnya', 'lagi', 'lebih', 'maka',
         'mampu', 'masih', 'masing', 'maupun', 'melalui', 'memang', 'mereka', 'mesti', 'meski', 'mohon',
-        'namun', 'nanti', 'nya', 'oleh', 'pada', 'para', 'pasti', 'perlu', 'pula', 'pun', 'saat', 'saja',
-        'saling', 'sama', 'sampai', 'sangat', 'satu', 'saya', 'sebagai', 'sebelum', 'secara', 'sedang',
-        'sedikit', 'sehingga', 'selain', 'selalu', 'selama', 'seluruh', 'semua', 'sendiri', 'seperti',
-        'serta', 'sesuai', 'setelah', 'setiap', 'siapa', 'sini', 'suatu', 'sudah', 'supaya', 'tak', 'tanpa',
-        'tentang', 'tentu', 'terhadap', 'tersebut', 'tetap', 'tetapi', 'tiap', 'tidak', 'tiga', 'untuk',
+        'namun', 'nanti', 'nya', 'oleh', 'pada', 'para', 'parah', 'pasti', 'perlu', 'pula', 'pun', 'saat', 'saja',
+        'saling', 'sama', 'samping', 'sampai', 'sangat', 'satu', 'saya', 'sebagai', 'sebelah', 'sebelum', 'secara', 'sedang',
+        'sedikit', 'sehingga', 'sekali', 'sekitar', 'selain', 'selalu', 'selama', 'seluruh', 'semua', 'sendiri', 'seperti',
+        'seputar', 'serta', 'sesuai', 'setelah', 'setiap', 'siapa', 'sini', 'suatu', 'sudah', 'supaya',
+        'tepatnya', 'tentang', 'tentu', 'terhadap', 'tersebut', 'tetap', 'tetapi', 'tiap', 'tiga', 'untuk',
         'walau', 'yang', 'yaitu', 'yakni', 'warga', 'tolong',
         'bro', 'gan', 'min', 'kak', 'bang', 'pak', 'bu', 'dong', 'sih', 'nih', 'tuh', 'deh', 'halo',
     ];
@@ -94,26 +126,25 @@ class AspirationSimilarityService
     public function analyzeAndStore(LaporanMasyarakat $report): void
     {
         DB::transaction(function () use ($report) {
+            /*
+             * Hapus hasil lama pada kedua arah. Saat laporan diedit, baris
+             * lama bisa tersimpan dengan laporan ini sebagai pihak pembanding
+             * (id lebih kecil). Kedua arah harus dibersihkan agar tidak ada
+             * skor basi yang tertinggal.
+             */
             LaporanSimilarityResult::query()
                 ->where('laporan_masyarakat_id', $report->id)
+                ->orWhere('compared_laporan_masyarakat_id', $report->id)
                 ->delete();
 
-            if (! $report->dprd_member_id || blank($report->isi)) {
+            if (! $report->dprd_member_id || blank($this->problemText($report))) {
                 return;
             }
 
             $analysis = $this->analyze($report);
 
-            foreach ($analysis['matches'] as $match) {
-                LaporanSimilarityResult::query()->create([
-                    'laporan_masyarakat_id' => $report->id,
-                    'compared_laporan_masyarakat_id' => $match['id'],
-                    'similarity_score' => $match['similarity'],
-                    'similarity_level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
-                    'evidence' => $match['evidence'] ?? null,
-                    'checked_at' => now(),
-                ]);
-            }
+            $this->storePairRows($report->id, $analysis['matches'], LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+            $this->storePairRows($report->id, $analysis['manual_review'], LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU);
 
             LaporanAnalysisRun::query()->updateOrCreate(
                 ['laporan_masyarakat_id' => $report->id],
@@ -134,6 +165,35 @@ class AspirationSimilarityService
     }
 
     /**
+     * Simpan satu arah hasil pasangan mengikuti konvensi lama: laporan dengan
+     * id lebih besar menjadi pemilik baris. Skor yang disimpan adalah cosine
+     * TF-IDF murni (problem_score), bukan skor gabungan.
+     *
+     * @param  array<int, array<string, mixed>>  $matches
+     */
+    private function storePairRows(int $reportId, array $matches, string $level): void
+    {
+        foreach ($matches as $match) {
+            $otherId = (int) $match['id'];
+            $newer = max($reportId, $otherId);
+            $older = min($reportId, $otherId);
+
+            LaporanSimilarityResult::query()->updateOrCreate(
+                [
+                    'laporan_masyarakat_id' => $newer,
+                    'compared_laporan_masyarakat_id' => $older,
+                ],
+                [
+                    'similarity_score' => (float) ($match['problem_score'] ?? $match['similarity']),
+                    'similarity_level' => $level,
+                    'evidence' => $match['evidence'] ?? null,
+                    'checked_at' => now(),
+                ]
+            );
+        }
+    }
+
+    /**
      * Jalankan pipeline yang sama dengan analyzeAndStore, lalu kembalikan
      * rincian setiap tahap. Hasil perhitungan tidak diubah oleh pemanggilan
      * metode ini.
@@ -145,17 +205,23 @@ class AspirationSimilarityService
         $locationThreshold = $this->locationThreshold();
         $problemThreshold = $this->problemThreshold();
         $maxResults = max(1, (int) config('aspiration_similarity.max_results', 10));
-        $preprocessing = $this->preprocessStages($this->problemText($report));
-        $newTokens = $this->problemTokens($report, $preprocessing);
-        $preprocessing['final_tokens'] = $newTokens;
+        $problemText = $this->problemText($report);
+        $preprocessing = $this->preprocessStages($problemText);
+        $preprocessing['problem_text_source'] = $this->problemTextSource($report);
+        $newTokens = $preprocessing['final_tokens'];
 
         $candidates = collect();
 
-        if ($report->dprd_member_id && filled($this->problemText($report))) {
+        if ($report->dprd_member_id && filled($problemText)) {
+            /*
+             * Seluruh laporan relevan milik anggota yang sama dibandingkan,
+             * bukan hanya laporan dengan id lebih kecil. Dengan begitu hasil
+             * analisis ulang laporan yang diedit tetap mempertimbangkan
+             * laporan yang lebih baru.
+             */
             $candidates = LaporanMasyarakat::query()
                 ->where('dprd_member_id', $report->dprd_member_id)
                 ->whereKeyNot($report->id)
-                ->where('id', '<', $report->id)
                 ->orderBy('id')
                 ->get([
                     'id',
@@ -175,7 +241,9 @@ class AspirationSimilarityService
         $tfIdf = null;
         $cosine = null;
         $highest = null;
+        $highestProblem = null;
         $matches = collect();
+        $manualReview = collect();
 
         if ($candidates->isNotEmpty()) {
             $documents = collect([$report->id => $newTokens]);
@@ -187,90 +255,83 @@ class AspirationSimilarityService
             $newVector = $vectors[$report->id] ?? [];
             $statistics = $this->corpusStatistics($documents);
             $newMagnitude = $this->magnitude($newVector);
-
             $tokenCounts = array_count_values($newTokens);
             $tokenCount = count($newTokens);
 
-            foreach ($newVector as $term => $weight) {
-                $df = $statistics['document_frequency'][$term] ?? 0;
-                $idf = log(($statistics['total_documents'] + 1) / ($df + 1)) + 1;
-                $tf = $tokenCounts[$term] ?? 0;
-
-                $newTerms[] = [
-                    'term' => (string) $term,
-                    'tf' => $tf,
-                    'tf_normalized' => $tokenCount > 0 ? $tf / $tokenCount : 0.0,
-                    'df' => $df,
-                    'idf' => $idf,
-                    'tfidf' => $weight,
-                ];
-            }
-
-            usort($newTerms, static fn (array $left, array $right) => $right['tfidf'] <=> $left['tfidf']);
+            $newTerms = $this->termBreakdown($newVector, $tokenCounts, $tokenCount, $statistics);
 
             $candidateDetails = $candidates
                 ->map(function (LaporanMasyarakat $candidate) use (
+                    $documents,
                     $vectors,
                     $newVector,
-                    $newMagnitude,
                     $report,
-                    $locationThreshold,
-                    $problemThreshold
+                    $problemThreshold,
+                    $locationThreshold
                 ) {
-                    $details = $this->cosineDetails($newVector, $vectors[$candidate->id] ?? []);
+                    $candidateVector = $vectors[$candidate->id] ?? [];
+                    $details = $this->cosineDetails($newVector, $candidateVector);
                     $problemScore = $details['similarity'];
                     $location = $this->locationAnalysis($report, $candidate);
                     $combined = $this->combinedScore($problemScore, $location['score']);
-                    $passes = $problemScore >= $problemThreshold
-                        || ($location['status'] === 'ok'
-                            && $location['score'] >= $locationThreshold
-                            && $problemScore >= 0.35);
-
-                    $shared = $this->sharedTerms($newVector, $vectors[$candidate->id] ?? []);
+                    $passes = $this->passesGate($problemScore, $location, $problemThreshold, $locationThreshold);
+                    $needsReview = $this->needsManualReview($problemScore, $passes, $problemThreshold);
+                    $shared = $this->sharedTerms($newVector, $candidateVector);
 
                     return [
                         'id' => $candidate->id,
                         'nomor_tiket' => $candidate->nomor_tiket,
                         'ringkasan' => (string) $candidate->ringkasan,
                         'dibuat_at' => $candidate->created_at?->toIso8601String(),
-                        'similarity' => $combined,
+                        // Nilai similarity adalah cosine TF-IDF murni.
+                        'similarity' => $problemScore,
                         'problem_score' => $problemScore,
                         'location_score' => $location['score'],
+                        'combined_score' => $combined,
                         'location_status' => $location['status'],
                         'similarity_status' => $passes
                             ? LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI
                             : LaporanMasyarakat::SIMILARITY_LEVEL_TIDAK_ADA,
+                        'manual_review_required' => $needsReview,
                         'dot_product' => $details['dot_product'],
                         'magnitude_new' => $details['left_magnitude'],
                         'magnitude_candidate' => $details['right_magnitude'],
                         'memenuhi_threshold' => $passes,
-                        'token_count' => count($this->problemTokens($candidate)),
-                        'vector' => $this->topTerms($vectors[$candidate->id] ?? []),
+                        'token_count' => count($documents[$candidate->id] ?? []),
+                        'vector' => $this->topTerms($candidateVector),
                         'evidence' => $this->buildEvidence(
                             $report,
                             $candidate,
                             $location,
                             $problemScore,
                             $combined,
-                            $shared
+                            $shared,
+                            $needsReview
                         ),
                     ];
                 })
-                ->sortByDesc('similarity')
+                ->sortByDesc('problem_score')
                 ->values();
 
             $matches = $candidateDetails
                 ->filter(fn (array $candidate) => $candidate['memenuhi_threshold'])
-                ->sortByDesc('similarity')
+                ->sortByDesc('problem_score')
                 ->take($maxResults)
                 ->values();
 
-            $highest = $candidateDetails->isEmpty()
+            $manualReview = $candidateDetails
+                ->filter(fn (array $candidate) => $candidate['manual_review_required'])
+                ->sortByDesc('problem_score')
+                ->values();
+
+            $highest = $matches->isEmpty() ? null : (float) $matches->max('problem_score');
+            $highestProblem = $candidateDetails->isEmpty()
                 ? null
-                : (float) $candidateDetails->max('similarity');
+                : (float) $candidateDetails->max('problem_score');
 
             $tfIdf = [
                 'total_documents' => $statistics['total_documents'],
+                'formula' => $this->formulas()['tfidf'],
                 'new_document' => [
                     'token_count' => $tokenCount,
                     'terms' => $newTerms,
@@ -278,10 +339,50 @@ class AspirationSimilarityService
             ];
 
             $cosine = [
+                'formula' => $this->formulas()['cosine'],
                 'magnitude_new' => $newMagnitude,
                 'candidates' => $candidateDetails->all(),
             ];
         }
+
+        $snapshot = [
+            'algorithm_version' => self::ALGORITHM_VERSION,
+            'threshold' => $problemThreshold,
+            'threshold_problem' => $problemThreshold,
+            'threshold_location' => $locationThreshold,
+            'max_results' => $maxResults,
+            'formulas' => $this->formulas(),
+            'decision_rule' => $this->decisionRule(),
+            'preprocessing' => $preprocessing,
+            'filter' => [
+                'member_id' => $report->dprd_member_id,
+                'criteria' => 'Anggota DPRD tujuan sama, seluruh laporan relevan (kecuali laporan ini), diurutkan berdasarkan id.',
+                'candidate_count' => $candidates->count(),
+                'candidates' => $candidates
+                    ->map(fn (LaporanMasyarakat $candidate) => [
+                        'id' => $candidate->id,
+                        'nomor_tiket' => $candidate->nomor_tiket,
+                        'ringkasan' => (string) $candidate->ringkasan,
+                        'kecamatan' => $candidate->kecamatan,
+                        'dibuat_at' => $candidate->created_at?->toIso8601String(),
+                    ])
+                    ->all(),
+            ],
+            'tfidf' => $tfIdf,
+            'cosine' => $cosine,
+            'result' => [
+                'highest_similarity' => $highest,
+                'highest_problem_score' => $highestProblem,
+                'threshold' => $problemThreshold,
+                'threshold_problem' => $problemThreshold,
+                'threshold_location' => $locationThreshold,
+                'operator' => 'AND',
+                'decision_rule' => $this->decisionRule(),
+                'is_duplicate' => $matches->isNotEmpty(),
+                'matches' => $matches->all(),
+                'manual_review' => $manualReview->all(),
+            ],
+        ];
 
         return [
             'threshold' => $problemThreshold,
@@ -290,50 +391,35 @@ class AspirationSimilarityService
             'max_results' => $maxResults,
             'candidate_count' => $candidates->count(),
             'highest_similarity' => $highest,
+            'highest_problem_score' => $highestProblem,
             'is_duplicate' => $matches->isNotEmpty(),
             'matches' => $matches
                 ->map(fn (array $match) => [
                     'id' => $match['id'],
                     'ringkasan' => $match['ringkasan'],
-                    'similarity' => $match['similarity'],
+                    'similarity' => $match['problem_score'],
                     'problem_score' => $match['problem_score'],
                     'location_score' => $match['location_score'],
+                    'combined_score' => $match['combined_score'],
+                    'location_status' => $match['location_status'],
+                    'manual_review_required' => false,
                     'evidence' => $match['evidence'],
                 ])
                 ->all(),
-            'snapshot' => [
-                'algorithm_version' => self::ALGORITHM_VERSION,
-                'threshold' => $problemThreshold,
-                'threshold_problem' => $problemThreshold,
-                'threshold_location' => $locationThreshold,
-                'max_results' => $maxResults,
-                'preprocessing' => $preprocessing,
-                'filter' => [
-                    'member_id' => $report->dprd_member_id,
-                    'criteria' => 'Anggota DPRD tujuan sama, id laporan lebih kecil, diurutkan berdasarkan id.',
-                    'candidate_count' => $candidates->count(),
-                    'candidates' => $candidates
-                        ->map(fn (LaporanMasyarakat $candidate) => [
-                            'id' => $candidate->id,
-                            'nomor_tiket' => $candidate->nomor_tiket,
-                            'ringkasan' => (string) $candidate->ringkasan,
-                            'kecamatan' => $candidate->kecamatan,
-                            'dibuat_at' => $candidate->created_at?->toIso8601String(),
-                        ])
-                        ->all(),
-                ],
-                'tfidf' => $tfIdf,
-                'cosine' => $cosine,
-                'result' => [
-                    'highest_similarity' => $highest,
-                    'threshold' => $problemThreshold,
-                    'threshold_problem' => $problemThreshold,
-                    'threshold_location' => $locationThreshold,
-                    'operator' => 'problem >= ambang DAN location >= ambang',
-                    'is_duplicate' => $matches->isNotEmpty(),
-                    'matches' => $matches->all(),
-                ],
-            ],
+            'manual_review' => $manualReview
+                ->map(fn (array $match) => [
+                    'id' => $match['id'],
+                    'ringkasan' => $match['ringkasan'],
+                    'similarity' => $match['problem_score'],
+                    'problem_score' => $match['problem_score'],
+                    'location_score' => $match['location_score'],
+                    'combined_score' => $match['combined_score'],
+                    'location_status' => $match['location_status'],
+                    'manual_review_required' => true,
+                    'evidence' => $match['evidence'],
+                ])
+                ->all(),
+            'snapshot' => $snapshot,
         ];
     }
 
@@ -356,6 +442,24 @@ class AspirationSimilarityService
         $locationThreshold = $this->locationThreshold();
         $problemThreshold = $this->problemThreshold();
 
+        /*
+         * Satu korpus hanya berisi laporan milik satu anggota DPRD. Bila
+         * pemanggil mengirim koleksi campuran, laporan anggota pertama dipakai
+         * sebagai acuan agar tidak pernah ada perbandingan lintas anggota.
+         */
+        $reports = $reports
+            ->filter(fn ($report) => $report instanceof LaporanMasyarakat && $report->dprd_member_id !== null)
+            ->unique('id')
+            ->values();
+
+        $memberId = $reports->first()?->dprd_member_id;
+
+        if ($memberId !== null) {
+            $reports = $reports
+                ->filter(fn (LaporanMasyarakat $report) => (int) $report->dprd_member_id === (int) $memberId)
+                ->values();
+        }
+
         $documents = [];
         $preprocessed = [];
         $excerpts = [];
@@ -363,7 +467,8 @@ class AspirationSimilarityService
         foreach ($reports as $report) {
             $text = $this->problemText($report);
             $stage = $this->preprocessStages($text);
-            $documents[$report->id] = $this->problemTokens($report, $stage);
+            $stage['problem_text_source'] = $this->problemTextSource($report);
+            $documents[$report->id] = $stage['final_tokens'];
             $preprocessed[$report->id] = $stage;
             $excerpts[$report->id] = mb_substr(preg_replace('/\s+/u', ' ', $text) ?: $text, 0, 320);
         }
@@ -375,7 +480,11 @@ class AspirationSimilarityService
                 'id' => $report->id,
                 'token_count' => count($documents[$report->id] ?? []),
                 'highest_similarity' => null,
+                'highest_problem_score' => null,
+                'highest_combined_score' => null,
                 'level' => LaporanMasyarakat::SIMILARITY_LEVEL_TIDAK_ADA,
+                'manual_review_required' => false,
+                'manual_review' => [],
             ];
         }
 
@@ -386,14 +495,19 @@ class AspirationSimilarityService
                 'threshold_problem' => $problemThreshold,
                 'threshold_location' => $locationThreshold,
                 'threshold_medium' => $problemThreshold,
+                'formulas' => $this->formulas(),
+                'decision_rule' => $this->decisionRule(),
                 'reports' => $reportLevels,
                 'pairs' => [],
+                'review_pairs' => [],
+                'preprocessing' => $preprocessed,
             ];
         }
 
         $vectors = $this->tfIdfVectors(collect($documents));
         $ids = array_keys($documents);
         $pairs = [];
+        $reviewPairs = [];
 
         for ($i = 0; $i < count($ids); $i++) {
             for ($j = $i + 1; $j < count($ids); $j++) {
@@ -406,79 +520,109 @@ class AspirationSimilarityService
                     continue;
                 }
 
-                $cosine = $this->cosineDetails($vectors[$leftId] ?? [], $vectors[$rightId] ?? []);
+                $leftVector = $vectors[$leftId] ?? [];
+                $rightVector = $vectors[$rightId] ?? [];
+                $cosine = $this->cosineDetails($leftVector, $rightVector);
                 $problemScore = $cosine['similarity'];
                 $location = $this->locationAnalysis($leftReport, $rightReport);
                 $combined = $this->combinedScore($problemScore, $location['score']);
+                $passes = $this->passesGate($problemScore, $location, $problemThreshold, $locationThreshold);
+                $needsReview = $this->needsManualReview($problemScore, $passes, $problemThreshold);
 
-                foreach ([$leftId => $combined, $rightId => $combined] as $reportId => $pairScore) {
-                    $current = $reportLevels[$reportId]['highest_similarity'];
+                /*
+                 * Skor cosine tertinggi disimpan terpisah dari skor gabungan
+                 * agar tampilan "kemiripan" selalu berasal dari TF-IDF.
+                 */
+                foreach ([$leftId, $rightId] as $reportId) {
+                    $level = &$reportLevels[$reportId];
 
-                    if ($current === null || $pairScore > $current) {
-                        $reportLevels[$reportId]['highest_similarity'] = $pairScore;
+                    if ($level['highest_problem_score'] === null
+                        || $problemScore > $level['highest_problem_score']) {
+                        $level['highest_problem_score'] = $problemScore;
                     }
+
+                    if ($level['highest_combined_score'] === null
+                        || $combined > $level['highest_combined_score']) {
+                        $level['highest_combined_score'] = $combined;
+                    }
+
+                    if ($passes && ($level['highest_similarity'] === null
+                        || $problemScore > $level['highest_similarity'])) {
+                        $level['highest_similarity'] = $problemScore;
+                    }
+
+                    unset($level);
                 }
 
-                $passes = $problemScore >= $problemThreshold
-                    || ($location['status'] === 'ok'
-                        && $location['score'] >= $locationThreshold
-                        && $problemScore >= 0.35);
-
-                if (! $passes) {
+                if (! $passes && ! $needsReview) {
                     continue;
                 }
 
-                $shared = $this->sharedTerms($vectors[$leftId] ?? [], $vectors[$rightId] ?? []);
+                $shared = $this->sharedTerms($leftVector, $rightVector);
+                $evidence = $this->buildEvidence(
+                    $leftReport,
+                    $rightReport,
+                    $location,
+                    $problemScore,
+                    $combined,
+                    $shared,
+                    $needsReview,
+                    $excerpts[$leftId] ?? '',
+                    $excerpts[$rightId] ?? ''
+                );
 
-                $pairs[] = [
+                $pair = [
                     'left_id' => $leftId,
                     'right_id' => $rightId,
-                    'score' => round($combined, 6),
+                    // score adalah cosine TF-IDF, bukan skor gabungan.
+                    'score' => round($problemScore, 6),
                     'problem_score' => round($problemScore, 6),
                     'location_score' => round($location['score'], 6),
+                    'combined_score' => round($combined, 6),
                     'cosine' => round($problemScore, 6),
-                    'level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
-                    'evidence' => $this->buildEvidence(
-                        $leftReport,
-                        $rightReport,
-                        $location,
-                        $problemScore,
-                        $combined,
-                        $shared,
-                        $excerpts[$leftId] ?? '',
-                        $excerpts[$rightId] ?? ''
-                    ),
+                    'level' => $passes
+                        ? LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI
+                        : LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU,
+                    'manual_review_required' => ! $passes,
+                    'evidence' => $evidence,
                 ];
+
+                if ($passes) {
+                    $pairs[] = $pair;
+                } else {
+                    $reviewPairs[] = $pair;
+
+                    foreach ([$leftId, $rightId] as $reportId) {
+                        $otherId = (int) $reportId === (int) $leftId ? $rightId : $leftId;
+
+                        $reportLevels[$reportId]['manual_review_required'] = true;
+                        $reportLevels[$reportId]['manual_review'][] = [
+                            'compared_laporan_id' => $otherId,
+                            'problem_score' => round($problemScore, 6),
+                            'location_score' => round($location['score'], 6),
+                            'combined_score' => round($combined, 6),
+                            'location_status' => $location['status'],
+                            'reasons' => $evidence['reasons'],
+                        ];
+                    }
+                }
             }
-        }
-
-        $highPairsByReport = [];
-
-        foreach ($pairs as $pair) {
-            $highPairsByReport[(int) $pair['left_id']] = true;
-            $highPairsByReport[(int) $pair['right_id']] = true;
         }
 
         foreach ($reportLevels as $id => $data) {
-            $highest = $data['highest_similarity'];
-
-            if ($highest === null) {
-                $reportLevels[$id]['level'] = LaporanMasyarakat::SIMILARITY_LEVEL_TIDAK_ADA;
-
-                continue;
-            }
-
             /*
              * Tingkat "tinggi" hanya diberikan bila aspirasi memiliki
-             * setidaknya satu pasangan yang lulus kedua ambang. Skor
-             * tertinggi tetap disimpan untuk rincian analisis.
+             * setidaknya satu pasangan yang lulus kedua ambang. Pasangan yang
+             * hanya mirip teks tetapi lokasinya belum terkonfirmasi tetap
+             * ditandai untuk peninjauan manual, bukan sebagai duplikat.
              */
-            $reportLevels[$id]['level'] = isset($highPairsByReport[(int) $id])
+            $reportLevels[$id]['level'] = $data['highest_similarity'] !== null
                 ? LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI
                 : LaporanMasyarakat::SIMILARITY_LEVEL_TIDAK_ADA;
         }
 
         usort($pairs, static fn (array $left, array $right) => $right['score'] <=> $left['score']);
+        usort($reviewPairs, static fn (array $left, array $right) => $right['problem_score'] <=> $left['problem_score']);
 
         return [
             'algorithm_version' => self::ALGORITHM_VERSION,
@@ -486,25 +630,40 @@ class AspirationSimilarityService
             'threshold_problem' => $problemThreshold,
             'threshold_location' => $locationThreshold,
             'threshold_medium' => $problemThreshold,
+            'formulas' => $this->formulas(),
+            'decision_rule' => $this->decisionRule(),
             'reports' => $reportLevels,
             'pairs' => $pairs,
+            'review_pairs' => $reviewPairs,
+            'preprocessing' => $preprocessed,
         ];
     }
 
     /**
-     * Teks yang dibandingkan untuk inti permasalahan. Judul/ringkasan ikut
-     * dihitung bila berbeda dari isi, agar pokok aspirasi terwakili.
+     * Teks yang dibandingkan untuk inti permasalahan.
+     *
+     * Aturan yang dipakai konsisten: isi aspirasi adalah sumber utama karena
+     * memuat uraian lengkap. Ringkasan hanya dipakai sebagai cadangan bila isi
+     * kosong. Dengan begitu ringkasan dan isi tidak dihitung dua kali, sehingga
+     * frekuensi term tetap mencerminkan dokumen yang sebenarnya.
      */
     private function problemText(LaporanMasyarakat $report): string
     {
-        $ringkasan = trim((string) $report->ringkasan);
         $isi = trim((string) $report->isi);
 
-        if ($ringkasan === '' || $ringkasan === $isi || mb_stripos($isi, $ringkasan) !== false) {
+        if ($isi !== '') {
             return $isi;
         }
 
-        return $ringkasan.' '.$isi;
+        return trim((string) $report->ringkasan);
+    }
+
+    /**
+     * Sumber teks yang benar-benar dipakai pada problemText().
+     */
+    private function problemTextSource(LaporanMasyarakat $report): string
+    {
+        return trim((string) $report->isi) !== '' ? 'isi' : 'ringkasan';
     }
 
     /**
@@ -712,9 +871,9 @@ class AspirationSimilarityService
     }
 
     /**
-     * Gabungkan skor inti masalah dan skor lokasi. Bobot dapat disesuaikan
-     * lewat berkas konfigurasi. Nilai kemiripan teks aspirasi murni tetap
-     * dipertahankan agar dua laporan identik selalu mencapai 100%.
+     * Skor gabungan hanya indikator ringkasan, bukan dasar keputusan.
+     * Nilainya adalah rata-rata berbobot problem_score dan location_score
+     * tanpa menaikkan salah satu komponen di atas nilai aslinya.
      */
     private function combinedScore(float $problemScore, float $locationScore): float
     {
@@ -728,7 +887,58 @@ class AspirationSimilarityService
 
         $blended = (($problemScore * $problemWeight) + ($locationScore * $locationWeight)) / $total;
 
-        return max(0.0, min(1.0, max($problemScore, $blended)));
+        return max(0.0, min(1.0, $blended));
+    }
+
+    /**
+     * Gerbang keputusan tunggal yang dipakai analyze() dan analyzeCorpus():
+     * skor masalah, status lokasi, dan skor lokasi harus sama-sama lulus.
+     *
+     * @param  array<string, mixed>  $location
+     */
+    private function passesGate(
+        float $problemScore,
+        array $location,
+        float $problemThreshold,
+        float $locationThreshold
+    ): bool {
+        return $location['status'] === 'ok'
+            && $problemScore >= $problemThreshold
+            && (float) $location['score'] >= $locationThreshold;
+    }
+
+    /**
+     * Teks sudah mirip, tetapi lokasi belum dapat dikonfirmasi. Kasus ini
+     * tidak boleh otomatis diberi label kemiripan tinggi.
+     */
+    private function needsManualReview(
+        float $problemScore,
+        bool $passes,
+        float $problemThreshold
+    ): bool {
+        return ! $passes && $problemScore >= $problemThreshold;
+    }
+
+    /**
+     * Rumus yang benar-benar dipakai perhitungan. String ini disimpan pada
+     * snapshot agar audit akademis tidak bergantung pada dokumentasi terpisah.
+     *
+     * @return array<string, string>
+     */
+    private function formulas(): array
+    {
+        return [
+            'tf' => 'TF(t,d) = jumlah kemunculan term t pada dokumen d / jumlah seluruh token dokumen d',
+            'idf' => 'IDF(t) = ln((N + 1) / (DF(t) + 1)) + 1',
+            'tfidf' => 'TF-IDF(t,d) = TF(t,d) x IDF(t)',
+            'cosine' => 'cos(A,B) = (A . B) / (||A|| x ||B||)',
+            'combined' => 'combined_score = (problem_score x 0.60 + location_score x 0.40) / (0.60 + 0.40); indikator saja',
+        ];
+    }
+
+    private function decisionRule(): string
+    {
+        return 'problem_score >= threshold_problem DAN location_status = ok DAN location_score >= threshold_location';
     }
 
     private function locationThreshold(): float
@@ -756,6 +966,7 @@ class AspirationSimilarityService
         float $problemScore,
         float $combinedScore,
         array $sharedTerms,
+        bool $manualReviewRequired = false,
         ?string $leftExcerpt = null,
         ?string $rightExcerpt = null
     ): array {
@@ -768,19 +979,35 @@ class AspirationSimilarityService
             'Skor lokasi %s%%.',
             number_format($location['score'] * 100, 1, ',', '.')
         );
+        $reasons[] = sprintf(
+            'Ambang masalah %s%% dan ambang lokasi %s%%.',
+            number_format($this->problemThreshold() * 100, 1, ',', '.'),
+            number_format($this->locationThreshold() * 100, 1, ',', '.')
+        );
+
+        if ($manualReviewRequired) {
+            $reasons[] = match ($location['status']) {
+                'insufficient' => 'Skor masalah memenuhi ambang, tetapi informasi alamat belum cukup. Kasus ini memerlukan peninjauan manual.',
+                'different_kecamatan' => 'Skor masalah memenuhi ambang, tetapi kecamatan berbeda. Kasus ini memerlukan peninjauan manual.',
+                default => 'Skor masalah memenuhi ambang, tetapi skor lokasi belum mencapai ambang. Kasus ini memerlukan peninjauan manual.',
+            };
+        }
 
         return [
             'algorithm_version' => self::ALGORITHM_VERSION,
-            'method' => 'dual-score',
+            'method' => 'tfidf-cosine-dual-gate',
             'threshold_location' => $this->locationThreshold(),
             'threshold_problem' => $this->problemThreshold(),
+            'decision_rule' => $this->decisionRule(),
+            'formulas' => $this->formulas(),
             'location_score' => round($location['score'], 6),
             'problem_score' => round($problemScore, 6),
             'combined_score' => round($combinedScore, 6),
             'location_status' => $location['status'],
             'cosine_similarity' => round($problemScore, 6),
-            'context_factor' => 1.0,
-            'final_score' => round($combinedScore, 6),
+            // Skor teks yang benar-benar dipakai untuk keputusan.
+            'final_score' => round($problemScore, 6),
+            'manual_review_required' => $manualReviewRequired,
             'location' => $location,
             'shared_terms' => $sharedTerms,
             'shared_term_count' => count($sharedTerms),
@@ -863,7 +1090,7 @@ class AspirationSimilarityService
                 continue;
             }
 
-            $stemmed = $this->lightStem($word);
+            $stemmed = $this->stem($word);
 
             if ($stemmed !== $word) {
                 $changes[] = [
@@ -882,6 +1109,8 @@ class AspirationSimilarityService
             'tokens' => $parts,
             'removed' => $removed,
             'stemming_changes' => $changes,
+            'stemmer' => $this->stemmerName(),
+            'negation_words_preserved' => self::NEGATION_WORDS,
             'final_tokens' => $tokens,
         ];
     }
@@ -922,6 +1151,43 @@ class AspirationSimilarityService
     }
 
     /**
+     * Rincian TF, DF, IDF, dan TF-IDF untuk term pada vektor dokumen baru.
+     * Nilainya dihitung dari statistik korpus yang sama dengan tfIdfVectors().
+     *
+     * @param  array<string, float>  $vector
+     * @param  array<string, int>  $tokenCounts
+     * @param  array<string, mixed>  $statistics
+     * @return array<int, array<string, mixed>>
+     */
+    private function termBreakdown(
+        array $vector,
+        array $tokenCounts,
+        int $tokenCount,
+        array $statistics
+    ): array {
+        $terms = [];
+
+        foreach ($vector as $term => $weight) {
+            $df = (int) ($statistics['document_frequency'][$term] ?? 0);
+            $idf = log(($statistics['total_documents'] + 1) / ($df + 1)) + 1;
+            $tf = (int) ($tokenCounts[$term] ?? 0);
+
+            $terms[] = [
+                'term' => (string) $term,
+                'tf' => $tf,
+                'tf_normalized' => $tokenCount > 0 ? $tf / $tokenCount : 0.0,
+                'df' => $df,
+                'idf' => $idf,
+                'tfidf' => $weight,
+            ];
+        }
+
+        usort($terms, static fn (array $left, array $right) => $right['tfidf'] <=> $left['tfidf']);
+
+        return $terms;
+    }
+
+    /**
      * Statistik korpus yang dipakai pada tabel TF-IDF. Perhitungannya identik
      * dengan tfIdfVectors agar nilai yang ditampilkan sama dengan yang dipakai.
      *
@@ -948,6 +1214,50 @@ class AspirationSimilarityService
         ];
     }
 
+    /**
+     * Stemming Bahasa Indonesia memakai Sastrawi bila tersedia. Cache statis
+     * mencegah kata yang sama di-stem berulang kali pada satu proses.
+     */
+    private function stem(string $word): string
+    {
+        if (isset(self::$stemCache[$word])) {
+            return self::$stemCache[$word];
+        }
+
+        $stemmed = $word;
+
+        try {
+            if (class_exists(\Sastrawi\Stemmer\StemmerFactory::class)) {
+                if ($this->stemmer === null) {
+                    $this->stemmer = (new \Sastrawi\Stemmer\StemmerFactory())->createStemmer();
+                }
+
+                $stemmed = (string) $this->stemmer->stem($word);
+            } else {
+                $stemmed = $this->lightStem($word);
+            }
+        } catch (\Throwable) {
+            $stemmed = $this->lightStem($word);
+        }
+
+        if ($stemmed === '') {
+            $stemmed = $word;
+        }
+
+        return self::$stemCache[$word] = $stemmed;
+    }
+
+    private function stemmerName(): string
+    {
+        return class_exists(\Sastrawi\Stemmer\StemmerFactory::class)
+            ? 'Sastrawi'
+            : 'lightStem fallback';
+    }
+
+    /**
+     * Fallback konservatif bila Sastrawi tidak dapat dimuat. Ini bukan jalur
+     * utama; jalur utama memakai kamus Sastrawi.
+     */
     private function lightStem(string $word): string
     {
         // Kata dasar berakhiran -an atau bentuk kata penting yang tidak boleh terpotong
@@ -970,15 +1280,6 @@ class AspirationSimilarityService
         $word = preg_replace('/(kan|an|i)$/u', '', $word) ?: $word;
 
         return mb_strlen($word) >= 3 ? $word : $word;
-    }
-
-    /**
-     * @param array<string, float> $left
-     * @param array<string, float> $right
-     */
-    private function cosineSimilarity(array $left, array $right): float
-    {
-        return $this->cosineDetails($left, $right)['similarity'];
     }
 
     /**
@@ -1008,10 +1309,18 @@ class AspirationSimilarityService
         $leftMagnitude = $this->magnitude($left);
         $rightMagnitude = $this->magnitude($right);
 
+        $similarity = 0.0;
+        if ($leftMagnitude > 0.0 && $rightMagnitude > 0.0) {
+            $raw = $dot / ($leftMagnitude * $rightMagnitude);
+            if ($raw >= 0.999999) {
+                $similarity = 1.0;
+            } else {
+                $similarity = max(0.0, min(1.0, $raw));
+            }
+        }
+
         return [
-            'similarity' => $leftMagnitude > 0.0 && $rightMagnitude > 0.0
-                ? max(0.0, min(1.0, $dot / ($leftMagnitude * $rightMagnitude)))
-                : 0.0,
+            'similarity' => $similarity,
             'dot_product' => $dot,
             'left_magnitude' => $leftMagnitude,
             'right_magnitude' => $rightMagnitude,

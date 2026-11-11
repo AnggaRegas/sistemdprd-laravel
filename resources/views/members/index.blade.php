@@ -24,60 +24,6 @@
         @endcan
     </x-admin.page-header>
 
-    <div class="app-card mb-3">
-        <div class="app-card-body-tight">
-            <div class="row g-3">
-                <div class="col-6 col-lg-3">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #eef6f1; color: #155043;">
-                            <i class="ri-team-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($summary['total'], 0, ',', '.') }}</strong>
-                            <span>Total anggota</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-6 col-lg-3">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #eaf6ee; color: #1f7a4c;">
-                            <i class="ri-user-follow-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($summary['active'], 0, ',', '.') }}</strong>
-                            <span>Anggota aktif</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-6 col-lg-3">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #fbf3e2; color: #a9853f;">
-                            <i class="ri-user-star-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($summary['staff'], 0, ',', '.') }}</strong>
-                            <span>Staf pendamping</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-6 col-lg-3">
-                    <div class="mini-stat">
-                        <span class="mini-stat-icon" style="background: #eaf2fb; color: #2c6aa0;">
-                            <i class="ri-archive-2-line" aria-hidden="true"></i>
-                        </span>
-                        <div>
-                            <strong>{{ number_format($summary['archives'], 0, ',', '.') }}</strong>
-                            <span>Arsip terkait</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="app-card">
         <div class="app-card-header member-card-header">
             <div>
@@ -85,7 +31,7 @@
                 <p class="app-card-subtitle">Menampilkan seluruh legislator resmi DPRD Kota Parepare.</p>
             </div>
 
-            <form method="GET" action="{{ route('anggota.index') }}" class="member-search" role="search">
+            <form method="GET" action="{{ route('anggota.index') }}" class="member-search" role="search" data-live-search>
                 @foreach (['status', 'partai', 'kecamatan', 'staff'] as $filterKey)
                     @if ($filters[$filterKey] !== '')
                         <input type="hidden" name="{{ $filterKey }}" value="{{ $filters[$filterKey] }}">
@@ -109,12 +55,6 @@
             <form method="GET" action="{{ route('anggota.index') }}" class="filter-bar" role="search">
                 <input type="hidden" name="q" value="{{ $filters['q'] }}">
 
-                <select name="status" class="filter-select" data-auto-submit aria-label="Filter status anggota">
-                    <option value="">Semua status</option>
-                    <option value="active" @selected($filters['status'] === 'active')>Aktif</option>
-                    <option value="inactive" @selected($filters['status'] === 'inactive')>Nonaktif</option>
-                </select>
-
                 <select name="partai" class="filter-select" data-auto-submit aria-label="Filter partai politik">
                     <option value="">Semua partai</option>
                     @foreach ($parties as $party)
@@ -129,21 +69,11 @@
                     @endforeach
                 </select>
 
-                <select name="staff" class="filter-select" data-auto-submit aria-label="Filter penugasan staf">
-                    <option value="">Semua penugasan</option>
-                    <option value="assigned" @selected($filters['staff'] === 'assigned')>Sudah ada staf</option>
-                    <option value="unassigned" @selected($filters['staff'] === 'unassigned')>Belum ditugaskan</option>
-                </select>
-
                 <div class="filter-actions">
                     <button type="submit" class="btn btn-emerald btn-sm">
                         <i class="ri-filter-3-line" aria-hidden="true"></i>
                         Terapkan
                     </button>
-                    <a href="{{ route('anggota.index') }}" class="filter-reset">
-                        <i class="ri-refresh-line" aria-hidden="true"></i>
-                        Reset
-                    </a>
                 </div>
             </form>
         </div>

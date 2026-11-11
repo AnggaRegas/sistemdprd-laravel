@@ -92,7 +92,7 @@
                                 <img src="{{ \Illuminate\Support\Facades\Storage::url($photo->image_path) }}"
                                      alt="{{ $photo->caption ?: 'Foto kegiatan album '.$gallery->title }}"
                                      class="w-100 rounded-top"
-                                     style="aspect-ratio: 4/3; object-fit: cover;"
+                                     style="aspect-ratio: 4/3; object-fit: cover; object-position: center;"
                                      loading="lazy">
 
                                 @if ($gallery->cover_image === $photo->image_path)
