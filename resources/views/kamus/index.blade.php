@@ -12,9 +12,19 @@
     <x-admin.page-header
         eyebrow="Pemeriksaan aspirasi"
         title="Kamus Acuan"
-        description="Kelola versi tahunan, entri klasifikasi, kata kunci, sinonim, dan prioritas acuan. Pemeriksaan otomatis tidak pernah mengubah keputusan manual yang sudah tersimpan."
+        description="Kelola data referensi yang digunakan untuk pemeriksaan aspirasi masyarakat dan perhitungan SPK."
     >
-        <a href="{{ route('kamus.versi.create') }}" class="btn btn-emerald">
+        @if ($selectedVersion || $activeVersion)
+            <a href="{{ route('kamus.versi.unggah', $selectedVersion ?: $activeVersion) }}" class="btn btn-emerald">
+                <i class="ri-upload-cloud-2-line" aria-hidden="true"></i>
+                Upload Kamus
+            </a>
+        @endif
+        <a href="#kriteria-kamus" class="btn btn-outline-soft">
+            <i class="ri-equalizer-line" aria-hidden="true"></i>
+            Edit Kriteria
+        </a>
+        <a href="{{ route('kamus.versi.create') }}" class="btn btn-outline-soft">
             <i class="ri-add-line" aria-hidden="true"></i>
             Tambah Versi
         </a>
@@ -42,103 +52,76 @@
         </div>
     @endif
 
+    {{-- Ringkasan Informasi Kamus (Clean Dashboard Cards) --}}
     <div class="app-card mb-3">
         <div class="app-card-body-tight">
             <div class="row g-3">
-                @foreach ($statusSummary as $status => $summary)
-                    <div class="col-sm-6 col-xl-3">
-                        <div class="mini-stat">
-                            <span class="mini-stat-icon" style="background: #f3f6f4; color: #155043;">
-                                <i class="ri-survey-line" aria-hidden="true"></i>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #e6f0eb; color: #155043;">
+                            <i class="ri-book-open-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong class="d-block text-truncate" style="font-size: 14px;">
+                                {{ $activeVersion ? $activeVersion->nama : ($selectedVersion ? $selectedVersion->nama : 'Belum Ada') }}
+                            </strong>
+                            <span class="text-muted" style="font-size: 11px;">
+                                Versi Aktif ({{ $activeVersion?->tahun ?? ($selectedVersion?->tahun ?? '—') }})
                             </span>
-                            <div>
-                                <strong>{{ number_format($summary['total'], 0, ',', '.') }}</strong>
-                                <span>{{ $summary['label'] }}</span>
-                            </div>
                         </div>
                     </div>
-                @endforeach
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #e8f4fd; color: #0369a1;">
+                            <i class="ri-equalizer-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong class="d-block" style="font-size: 14px;">
+                                {{ $kriteria->count() }} Kriteria · {{ number_format($selectedVersion?->entri_count ?? ($activeVersion?->entri_count ?? 0), 0, ',', '.') }} Entri
+                            </strong>
+                            <span class="text-muted" style="font-size: 11px;">Jumlah Kriteria &amp; Data</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: #fef3c7; color: #92400e;">
+                            <i class="ri-time-line" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong class="d-block text-truncate" style="font-size: 13px;">
+                                {{ $kriteriaTerakhirDiperbarui ? \App\Support\PortalData::dateTime($kriteriaTerakhirDiperbarui) : ($selectedVersion?->updated_at ? \App\Support\PortalData::dateTime($selectedVersion->updated_at) : '—') }}
+                            </strong>
+                            <span class="text-muted" style="font-size: 11px;">Terakhir Diperbarui</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="mini-stat">
+                        <span class="mini-stat-icon" style="background: {{ $activeVersion ? '#dcfce7' : '#f1f5f9' }}; color: {{ $activeVersion ? '#166534' : '#475569' }};">
+                            <i class="{{ $activeVersion ? 'ri-checkbox-circle-line' : 'ri-close-circle-line' }}" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong class="d-block" style="font-size: 14px;">
+                                <span class="status-badge {{ $activeVersion ? 'status-success' : 'status-neutral' }}">
+                                    {{ $activeVersion ? 'Kamus Aktif' : 'Nonaktif' }}
+                                </span>
+                            </strong>
+                            <span class="text-muted" style="font-size: 11px;">Status Kamus</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-
-    <div class="app-card mb-3">
-        <div class="app-card-header">
-            <div>
-                <h2 class="app-card-title">Versi Kamus</h2>
-                <p class="app-card-subtitle">{{ $versions->count() }} versi tersimpan · {{ number_format($totalReports, 0, ',', '.') }} laporan masyarakat</p>
-            </div>
-            <span class="status-badge {{ $activeVersion ? 'status-success' : 'status-warning' }}">
-                {{ $activeVersion ? 'Aktif: '.$activeVersion->tahun : 'Belum ada versi aktif' }}
-            </span>
-        </div>
-
-        @if ($versions->isEmpty())
-            <x-admin.empty-state
-                icon="ri-book-open-line"
-                title="Belum ada Kamus Acuan"
-                description="Tambahkan versi pertama untuk mulai menyusun klasifikasi dan kata kunci acuan."
-            >
-                <a href="{{ route('kamus.versi.create') }}" class="btn btn-emerald btn-sm">
-                    <i class="ri-add-line" aria-hidden="true"></i>
-                    Tambah Versi
-                </a>
-            </x-admin.empty-state>
-        @else
-            <div class="table-responsive">
-                <table class="table-modern">
-                    <thead>
-                        <tr>
-                            <th scope="col">Tahun</th>
-                            <th scope="col">Nama versi</th>
-                            <th scope="col">Entri</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Ditetapkan</th>
-                            <th scope="col"><span class="visually-hidden">Tindakan</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($versions as $version)
-                            <tr class="{{ $selectedVersion?->id === $version->id ? 'is-selected' : '' }}">
-                                <td><strong>{{ $version->tahun }}</strong></td>
-                                <td>
-                                    {{ $version->nama }}
-                                    @if ($selectedVersion?->id === $version->id)
-                                        <span class="status-badge status-info ms-1">Dipilih</span>
-                                    @endif
-                                </td>
-                                <td>{{ number_format($version->entri_count, 0, ',', '.') }}</td>
-                                <td>
-                                    <span class="status-badge {{ $version->is_active ? 'status-success' : 'status-neutral' }}">{{ $version->status_label }}</span>
-                                </td>
-                                <td>
-                                    <span class="cell-muted">
-                                        {{ $version->ditetapkan_at ? \App\Support\PortalData::dateTime($version->ditetapkan_at) : '—' }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2 justify-content-end">
-                                        <a href="{{ route('kamus.index', ['versi' => $version->id]) }}" class="btn btn-outline-soft btn-sm">Pilih</a>
-                                        <a href="{{ route('kamus.versi.edit', $version) }}" class="btn btn-outline-soft btn-sm">Edit</a>
-                                        @if (! $version->is_active)
-                                            <form method="POST" action="{{ route('kamus.versi.aktifkan', $version) }}">
-                                                @csrf
-                                                @method('PATCH')
-                                                <button type="submit" class="btn btn-emerald btn-sm">Aktifkan</button>
-                                            </form>
-                                        @endif
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        @endif
     </div>
 
     @if ($selectedVersion)
-        <div class="app-card mb-3">
+        {{-- Daftar Kriteria Kamus (SPK) --}}
+        <div class="app-card mb-3" id="kriteria-kamus">
             <div class="app-card-header">
                 <div>
                     <h2 class="app-card-title">Kriteria &amp; Bobot Perhitungan (SPK)</h2>
@@ -148,7 +131,9 @@
                         <strong>{{ $kriteriaTerakhirDiperbarui ? \App\Support\PortalData::dateTime($kriteriaTerakhirDiperbarui) : '—' }}</strong>
                     </p>
                 </div>
-                <span class="status-badge status-info">{{ $kriteria->count() }} kriteria</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="status-badge status-info">{{ $kriteria->count() }} kriteria</span>
+                </div>
             </div>
 
             <div class="app-card-body">
@@ -163,57 +148,45 @@
                         <table class="table-modern kamus-kriteria-table">
                             <thead>
                                 <tr>
-                                    <th scope="col">Faktor</th>
-                                    <th scope="col">Nama tampilan</th>
-                                    <th scope="col">Bobot</th>
-                                    <th scope="col">Satuan</th>
-                                    <th scope="col">Aktif</th>
-                                    <th scope="col"><span class="visually-hidden">Tindakan</span></th>
+                                    <th scope="col" style="width: 50px;">No</th>
+                                    <th scope="col">Nama Kriteria</th>
+                                    <th scope="col">Deskripsi</th>
+                                    <th scope="col" style="width: 140px;">Bobot</th>
+                                    <th scope="col" style="width: 110px;">Status</th>
+                                    <th scope="col" style="width: 150px; text-align: right;"><span class="visually-hidden">Aksi</span></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach ($kriteria as $item)
                                     <tr>
+                                        <td><span class="cell-muted">{{ $loop->iteration }}</span></td>
                                         <td>
-                                            <strong>{{ $item->faktor_label }}</strong>
-                                            <span class="cell-sub d-block" style="font-size: 10px;">{{ $item->kode }}</span>
+                                            <strong>{{ $item->nama }}</strong>
+                                            <span class="cell-sub d-block" style="font-size: 10px;">{{ $item->faktor_label }} ({{ $item->kode }})</span>
                                         </td>
                                         <td>
-                                            <input form="kriteriaUpdate{{ $item->id }}"
-                                                   type="text"
-                                                   name="nama"
-                                                   value="{{ $item->nama }}"
-                                                   maxlength="120"
-                                                   class="form-control form-control-sm"
-                                                   required>
+                                            <span class="cell-sub" style="font-size: 11.5px; line-height: 1.6;">
+                                                {{ $item->keterangan ?: ($item->faktor_keterangan ?: '—') }}
+                                            </span>
                                         </td>
-                                        <td style="width: 120px;">
-                                            <input form="kriteriaUpdate{{ $item->id }}"
-                                                   type="number"
-                                                   name="bobot"
-                                                   value="{{ rtrim(rtrim(number_format($item->bobot, 3, '.', ''), '0'), '.') }}"
-                                                   step="0.001"
-                                                   min="0"
-                                                   max="999"
-                                                   class="form-control form-control-sm"
-                                                   required>
-                                        </td>
-                                        <td><span class="cell-muted">{{ $item->satuan ?: '—' }}</span></td>
                                         <td>
-                                            <input form="kriteriaUpdate{{ $item->id }}" type="hidden" name="is_active" value="0">
-                                            <input form="kriteriaUpdate{{ $item->id }}"
-                                                   type="checkbox"
-                                                   name="is_active"
-                                                   value="1"
-                                                   class="form-check-input"
-                                                   @checked($item->is_active)>
+                                            <strong>{{ rtrim(rtrim(number_format($item->bobot, 3, '.', ''), '0'), '.') }}</strong>
+                                            @if ($item->satuan)
+                                                <span class="cell-sub ms-1">{{ $item->satuan }}</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <span class="status-badge {{ $item->is_active ? 'status-success' : 'status-neutral' }}">
+                                                {{ $item->is_active ? 'Aktif' : 'Nonaktif' }}
+                                            </span>
                                         </td>
                                         <td>
                                             <div class="d-flex flex-wrap gap-2 justify-content-end">
-                                                <button type="submit"
-                                                        form="kriteriaUpdate{{ $item->id }}"
-                                                        class="btn btn-emerald btn-sm">
-                                                    Simpan
+                                                <button type="button"
+                                                        class="btn btn-outline-soft btn-sm"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editKriteriaModal{{ $item->id }}">
+                                                    <i class="ri-edit-line" aria-hidden="true"></i> Edit
                                                 </button>
                                                 <button type="button"
                                                         class="btn btn-outline-soft btn-sm text-danger"
@@ -222,7 +195,7 @@
                                                         data-confirm-message="Kriteria {{ $item->nama }} dihapus. Perhitungan berikutnya kembali memakai nilai bawaan."
                                                         data-confirm-label="Hapus kriteria"
                                                         data-confirm-form="#deleteKriteria{{ $item->id }}">
-                                                    Hapus
+                                                    <i class="ri-delete-bin-line" aria-hidden="true"></i> Hapus
                                                 </button>
                                             </div>
                                         </td>
@@ -233,13 +206,75 @@
                     </div>
                 @endif
 
+                {{-- Modals Edit Kriteria --}}
                 @foreach ($kriteria as $item)
-                    <form id="kriteriaUpdate{{ $item->id }}" method="POST"
-                          action="{{ route('kamus.kriteria.update', $item) }}" class="d-none">
-                        @csrf
-                        @method('PUT')
-                        <textarea name="keterangan">{{ $item->keterangan }}</textarea>
-                    </form>
+                    <div class="modal fade" id="editKriteriaModal{{ $item->id }}" tabindex="-1" aria-labelledby="editKriteriaLabel{{ $item->id }}" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="editKriteriaLabel{{ $item->id }}">
+                                        Edit Kriteria: {{ $item->nama }}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                                </div>
+                                <form method="POST" action="{{ route('kamus.kriteria.update', $item) }}">
+                                    @csrf
+                                    @method('PUT')
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label" for="kriteriaNamaInput{{ $item->id }}">Nama Kriteria</label>
+                                            <input id="kriteriaNamaInput{{ $item->id }}"
+                                                   type="text"
+                                                   name="nama"
+                                                   value="{{ $item->nama }}"
+                                                   maxlength="120"
+                                                   class="form-control"
+                                                   required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="kriteriaBobotInput{{ $item->id }}">
+                                                Bobot @if ($item->satuan) ({{ $item->satuan }}) @endif
+                                            </label>
+                                            <input id="kriteriaBobotInput{{ $item->id }}"
+                                                   type="number"
+                                                   name="bobot"
+                                                   value="{{ rtrim(rtrim(number_format($item->bobot, 3, '.', ''), '0'), '.') }}"
+                                                   step="0.001"
+                                                   min="0"
+                                                   max="999"
+                                                   class="form-control"
+                                                   required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="kriteriaKetInput{{ $item->id }}">Deskripsi / Keterangan</label>
+                                            <textarea id="kriteriaKetInput{{ $item->id }}"
+                                                      name="keterangan"
+                                                      rows="3"
+                                                      maxlength="1000"
+                                                      class="form-control">{{ $item->keterangan }}</textarea>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input type="hidden" name="is_active" value="0">
+                                            <input type="checkbox"
+                                                   name="is_active"
+                                                   value="1"
+                                                   class="form-check-input"
+                                                   id="activeSwitch{{ $item->id }}"
+                                                   @checked($item->is_active)>
+                                            <label class="form-check-label" for="activeSwitch{{ $item->id }}">
+                                                Kriteria Aktif untuk Perhitungan SPK
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-soft" data-bs-dismiss="modal">Batal</button>
+                                        <button type="submit" class="btn btn-emerald">Simpan Perubahan</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
                     <form id="deleteKriteria{{ $item->id }}" method="POST"
                           action="{{ route('kamus.kriteria.destroy', $item) }}" class="d-none">
                         @csrf
@@ -248,7 +283,7 @@
                 @endforeach
 
                 @if ($kriteriaFaktorTersedia->isNotEmpty())
-                    <div class="kamus-kriteria-add">
+                    <div class="kamus-kriteria-add mt-4">
                         <h3 class="app-card-title mb-1">Tambah Kriteria</h3>
                         <p class="cell-muted mb-3" style="font-size: 11px;">
                             Pilih faktor perhitungan yang belum dipakai pada versi {{ $selectedVersion->tahun }}.
@@ -299,6 +334,7 @@
             </div>
         </div>
 
+        {{-- Entri Kamus Acuan --}}
         <div class="app-card mb-3">
             <div class="app-card-header">
                 <div>
@@ -311,13 +347,13 @@
                     </p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ route('kamus.entri.create', $selectedVersion) }}" class="btn btn-emerald btn-sm">
-                        <i class="ri-add-line" aria-hidden="true"></i>
-                        Tambah Entri
-                    </a>
                     <a href="{{ route('kamus.versi.unggah', $selectedVersion) }}" class="btn btn-emerald btn-sm">
                         <i class="ri-upload-cloud-2-line" aria-hidden="true"></i>
-                        Unggah Kamus
+                        Upload Kamus
+                    </a>
+                    <a href="{{ route('kamus.entri.create', $selectedVersion) }}" class="btn btn-outline-soft btn-sm">
+                        <i class="ri-add-line" aria-hidden="true"></i>
+                        Tambah Entri
                     </a>
                     <a href="{{ route('kamus.versi.impor', $selectedVersion) }}" class="btn btn-outline-soft btn-sm">
                         <i class="ri-upload-2-line" aria-hidden="true"></i>
@@ -435,6 +471,82 @@
             </div>
         </div>
     @endif
+
+    {{-- Versi Kamus --}}
+    <div class="app-card mb-3">
+        <div class="app-card-header">
+            <div>
+                <h2 class="app-card-title">Versi Kamus</h2>
+                <p class="app-card-subtitle">{{ $versions->count() }} versi tersimpan · {{ number_format($totalReports, 0, ',', '.') }} laporan masyarakat</p>
+            </div>
+            <span class="status-badge {{ $activeVersion ? 'status-success' : 'status-warning' }}">
+                {{ $activeVersion ? 'Aktif: '.$activeVersion->tahun : 'Belum ada versi aktif' }}
+            </span>
+        </div>
+
+        @if ($versions->isEmpty())
+            <x-admin.empty-state
+                icon="ri-book-open-line"
+                title="Belum ada Kamus Acuan"
+                description="Tambahkan versi pertama untuk mulai menyusun klasifikasi dan kata kunci acuan."
+            >
+                <a href="{{ route('kamus.versi.create') }}" class="btn btn-emerald btn-sm">
+                    <i class="ri-add-line" aria-hidden="true"></i>
+                    Tambah Versi
+                </a>
+            </x-admin.empty-state>
+        @else
+            <div class="table-responsive">
+                <table class="table-modern">
+                    <thead>
+                        <tr>
+                            <th scope="col">Tahun</th>
+                            <th scope="col">Nama versi</th>
+                            <th scope="col">Entri</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Ditetapkan</th>
+                            <th scope="col"><span class="visually-hidden">Tindakan</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($versions as $version)
+                            <tr class="{{ $selectedVersion?->id === $version->id ? 'is-selected' : '' }}">
+                                <td><strong>{{ $version->tahun }}</strong></td>
+                                <td>
+                                    {{ $version->nama }}
+                                    @if ($selectedVersion?->id === $version->id)
+                                        <span class="status-badge status-info ms-1">Dipilih</span>
+                                    @endif
+                                </td>
+                                <td>{{ number_format($version->entri_count, 0, ',', '.') }}</td>
+                                <td>
+                                    <span class="status-badge {{ $version->is_active ? 'status-success' : 'status-neutral' }}">{{ $version->status_label }}</span>
+                                </td>
+                                <td>
+                                    <span class="cell-muted">
+                                        {{ $version->ditetapkan_at ? \App\Support\PortalData::dateTime($version->ditetapkan_at) : '—' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                        <a href="{{ route('kamus.index', ['versi' => $version->id]) }}" class="btn btn-outline-soft btn-sm">Pilih</a>
+                                        <a href="{{ route('kamus.versi.edit', $version) }}" class="btn btn-outline-soft btn-sm">Edit</a>
+                                        @if (! $version->is_active)
+                                            <form method="POST" action="{{ route('kamus.versi.aktifkan', $version) }}">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="btn btn-emerald btn-sm">Aktifkan</button>
+                                            </form>
+                                        @endif
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
 @endsection
 
 @push('styles')
@@ -444,8 +556,7 @@
         .table-modern tr.is-selected { background: #f3f8f5; }
         .kamus-kriteria-table { min-width: 780px; }
         .kamus-kriteria-table th, .kamus-kriteria-table td { padding: 12px; font-size: 12.5px; vertical-align: middle; }
-        .kamus-kriteria-table .form-control-sm { min-width: 150px; }
-        .kamus-kriteria-add { margin-top: 18px; padding: 18px; border: 1px dashed #d7e2dc; border-radius: 16px; background: #fbfcfa; }
+        .kamus-kriteria-add { padding: 18px; border: 1px dashed #d7e2dc; border-radius: 16px; background: #fbfcfa; }
     </style>
 @endpush
 

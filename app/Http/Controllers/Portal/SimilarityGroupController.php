@@ -67,14 +67,26 @@ class SimilarityGroupController extends Controller
         $returnUrl = SafeReturnUrl::reportsIndex($validated['return_to'] ?? null, $request);
         $redirectMainId = null;
 
-        DB::transaction(function () use (
-            $laporan,
-            $validated,
-            $action,
-            $catatan,
-            $administrator,
-            &$redirectMainId
-        ): void {
+        try {
+            DB::transaction(function () use (
+                $laporan,
+                $validated,
+                $action,
+                $catatan,
+                $administrator,
+                &$redirectMainId
+            ): void {
+            /*
+             * Kunci anggota lebih dahulu agar urutan penguncian sama dengan
+             * AspirationGroupingService (anggota -> laporan -> kelompok).
+             * Dengan begitu pemeriksaan ulang dan keputusan Super Admin tidak
+             * dapat berjalan bersamaan untuk anggota yang sama.
+             */
+            DprdMember::query()
+                ->whereKey($laporan->dprd_member_id)
+                ->lockForUpdate()
+                ->first();
+
             $report = LaporanMasyarakat::query()
                 ->withTrashed()
                 ->lockForUpdate()
@@ -149,8 +161,17 @@ class SimilarityGroupController extends Controller
                 ],
                 'Keputusan kemiripan '.$group->kode.' disimpan: '
                     .(LaporanSimilarityDecision::ACTION_LABELS[$action] ?? $action).'.'
-            );
-        });
+                );
+            });
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->to($returnUrl)
+                ->with('error', 'Keputusan kemiripan belum dapat disimpan karena terjadi kendala pada data. Tidak ada perubahan yang tersimpan; silakan coba lagi.');
+        }
 
         if ($redirectMainId !== null) {
             return redirect()
@@ -178,7 +199,15 @@ class SimilarityGroupController extends Controller
 
         abort_unless($administrator?->isAdministrator(), 403);
 
-        $result = $this->grouping->regroupMember($member, $administrator);
+        try {
+            $result = $this->grouping->regroupMember($member, $administrator);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->back()
+                ->with('error', 'Pemeriksaan ulang kemiripan belum dapat diselesaikan karena terjadi kendala pada data. Data lama tidak diubah; silakan coba lagi.');
+        }
 
         return redirect()
             ->back()
@@ -232,69 +261,83 @@ class SimilarityGroupController extends Controller
     }
 
     /**
+     * Tentukan satu kelompok tujuan untuk seluruh kandidat.
+     *
+     * Kandidat dapat berasal dari beberapa kelompok sekaligus ketika sebuah
+     * aspirasi baru terdeteksi mirip dengan anggota kelompok yang berbeda.
+     * Karena satu aspirasi hanya boleh memiliki satu keanggotaan, kelompok
+     * yang saling terhubung digabungkan ke kelompok tujuan. Keanggotaan tidak
+     * pernah disalin sehingga unique index laporan_masyarakat_id tetap aman.
+     *
      * @param  Collection<int, LaporanMasyarakat>  $candidates
      */
     private function resolveGroup(LaporanMasyarakat $report, Collection $candidates): LaporanSimilarityGroup
     {
+        $candidateIds = $candidates->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+
+        $relatedGroups = LaporanSimilarityGroup::query()
+            ->where('dprd_member_id', $report->dprd_member_id)
+            ->where(function ($query) use ($report, $candidateIds) {
+                $query->whereKey($report->similarity_group_id)
+                    ->orWhereHas('members', fn ($members) => $members->whereIn(
+                        'laporan_masyarakat_id',
+                        $candidateIds
+                    ));
+            })
+            ->orderBy('id')
+            ->get();
+
+        $group = null;
+
         if ($report->similarity_group_id) {
-            $group = LaporanSimilarityGroup::query()->find($report->similarity_group_id);
-
-            if ($group) {
-                return $group;
-            }
+            $group = $relatedGroups->firstWhere('id', (int) $report->similarity_group_id);
         }
 
-        $existing = LaporanSimilarityGroup::query()
-            ->where('dprd_member_id', $report->dprd_member_id)
-            ->whereHas('members', fn ($query) => $query->whereIn(
-                'laporan_masyarakat_id',
-                $candidates->pluck('id')->all()
-            ))
-            ->first();
+        $group ??= $relatedGroups->first();
 
-        if ($existing) {
-            return $existing;
+        if ($group === null) {
+            $sequence = 1;
+
+            do {
+                $kode = 'KLP-'.str_pad((string) $sequence++, 2, '0', STR_PAD_LEFT);
+            } while (LaporanSimilarityGroup::query()
+                ->where('dprd_member_id', $report->dprd_member_id)
+                ->where('kode', $kode)
+                ->exists());
+
+            $group = LaporanSimilarityGroup::query()->create([
+                'dprd_member_id' => $report->dprd_member_id,
+                'kode' => $kode,
+                'status' => LaporanSimilarityGroup::STATUS_MENUNGGU,
+                'algorithm_version' => \App\Services\AspirationSimilarityService::ALGORITHM_VERSION,
+                'threshold_high' => (float) config('aspiration_similarity.problem_threshold', 0.70),
+                'threshold_medium' => (float) config('aspiration_similarity.problem_threshold', 0.70),
+                'snapshot' => [
+                    'member_id' => $report->dprd_member_id,
+                    'report_ids' => $candidateIds,
+                    'generated_at' => now()->toIso8601String(),
+                ],
+            ]);
         }
 
-        $sequence = 1;
-
-        do {
-            $kode = 'KLP-'.str_pad((string) $sequence++, 2, '0', STR_PAD_LEFT);
-        } while (LaporanSimilarityGroup::query()
-            ->where('dprd_member_id', $report->dprd_member_id)
-            ->where('kode', $kode)
-            ->exists());
-
-        $group = LaporanSimilarityGroup::query()->create([
-            'dprd_member_id' => $report->dprd_member_id,
-            'kode' => $kode,
-            'status' => LaporanSimilarityGroup::STATUS_MENUNGGU,
-            'algorithm_version' => \App\Services\AspirationSimilarityService::ALGORITHM_VERSION,
-            'threshold_high' => (float) config('aspiration_similarity.problem_threshold', 0.70),
-            'threshold_medium' => (float) config('aspiration_similarity.problem_threshold', 0.70),
-            'snapshot' => [
-                'member_id' => $report->dprd_member_id,
-                'report_ids' => $candidates->pluck('id')->all(),
-                'generated_at' => now()->toIso8601String(),
-            ],
-        ]);
-
-        foreach ($candidates as $candidate) {
-            $candidate->forceFill(['similarity_group_id' => $group->id])->save();
-
-            $membership = LaporanSimilarityGroupMember::query()
-                ->where('laporan_masyarakat_id', $candidate->id)
-                ->first();
-
-            if ($membership) {
+        foreach ($relatedGroups as $related) {
+            if ((int) $related->id === (int) $group->id) {
                 continue;
             }
 
-            LaporanSimilarityGroupMember::query()->create([
-                'laporan_similarity_group_id' => $group->id,
-                'laporan_masyarakat_id' => $candidate->id,
-                'peran' => LaporanSimilarityGroupMember::PERAN_ANGGOTA,
-            ]);
+            $this->grouping->mergeGroups($group, $related);
+        }
+
+        $group->refresh();
+
+        foreach ($candidates as $candidate) {
+            $this->grouping->ensureMembership(
+                $group,
+                (int) $candidate->id,
+                ['peran' => LaporanSimilarityGroupMember::PERAN_ANGGOTA]
+            );
+
+            $candidate->forceFill(['similarity_group_id' => $group->id])->save();
         }
 
         return $group;
@@ -340,20 +383,14 @@ class SimilarityGroupController extends Controller
                 'similarity_note' => $catatan,
             ])->save();
 
-            LaporanSimilarityGroupMember::query()->updateOrCreate(
-                [
-                    'laporan_similarity_group_id' => $group->id,
-                    'laporan_masyarakat_id' => $candidate->id,
-                ],
-                [
-                    'peran' => $isMain
-                        ? LaporanSimilarityGroupMember::PERAN_UTAMA
-                        : LaporanSimilarityGroupMember::PERAN_DUPLIKAT,
-                    'decided_by' => $userId,
-                    'decided_at' => now(),
-                    'catatan' => $catatan,
-                ]
-            );
+            $this->grouping->syncMembership($group, (int) $candidate->id, [
+                'peran' => $isMain
+                    ? LaporanSimilarityGroupMember::PERAN_UTAMA
+                    : LaporanSimilarityGroupMember::PERAN_DUPLIKAT,
+                'decided_by' => $userId,
+                'decided_at' => now(),
+                'catatan' => $catatan,
+            ]);
 
             $this->logDecision(
                 $group,
@@ -436,31 +473,19 @@ class SimilarityGroupController extends Controller
             'similarity_note' => $catatan,
         ])->save();
 
-        LaporanSimilarityGroupMember::query()->updateOrCreate(
-            [
-                'laporan_similarity_group_id' => $group->id,
-                'laporan_masyarakat_id' => $main->id,
-            ],
-            [
-                'peran' => LaporanSimilarityGroupMember::PERAN_UTAMA,
-                'decided_by' => $userId,
-                'decided_at' => now(),
-                'catatan' => $catatan,
-            ]
-        );
+        $this->grouping->syncMembership($group, (int) $main->id, [
+            'peran' => LaporanSimilarityGroupMember::PERAN_UTAMA,
+            'decided_by' => $userId,
+            'decided_at' => now(),
+            'catatan' => $catatan,
+        ]);
 
-        LaporanSimilarityGroupMember::query()->updateOrCreate(
-            [
-                'laporan_similarity_group_id' => $group->id,
-                'laporan_masyarakat_id' => $current->id,
-            ],
-            [
-                'peran' => LaporanSimilarityGroupMember::PERAN_DUPLIKAT,
-                'decided_by' => $userId,
-                'decided_at' => now(),
-                'catatan' => $catatan,
-            ]
-        );
+        $this->grouping->syncMembership($group, (int) $current->id, [
+            'peran' => LaporanSimilarityGroupMember::PERAN_DUPLIKAT,
+            'decided_by' => $userId,
+            'decided_at' => now(),
+            'catatan' => $catatan,
+        ]);
 
         $this->logDecision(
             $group,
@@ -532,18 +557,12 @@ class SimilarityGroupController extends Controller
                 'similarity_note' => $catatan,
             ])->save();
 
-            LaporanSimilarityGroupMember::query()->updateOrCreate(
-                [
-                    'laporan_similarity_group_id' => $group->id,
-                    'laporan_masyarakat_id' => $candidate->id,
-                ],
-                [
-                    'peran' => LaporanSimilarityGroupMember::PERAN_DIPISAH,
-                    'decided_by' => $userId,
-                    'decided_at' => now(),
-                    'catatan' => $catatan,
-                ]
-            );
+            $this->grouping->syncMembership($group, (int) $candidate->id, [
+                'peran' => LaporanSimilarityGroupMember::PERAN_DIPISAH,
+                'decided_by' => $userId,
+                'decided_at' => now(),
+                'catatan' => $catatan,
+            ]);
 
             $scoreBase = (int) $candidate->id === (int) $current->id
                 ? $candidates->first(fn (LaporanMasyarakat $item) => (int) $item->id !== (int) $current->id)

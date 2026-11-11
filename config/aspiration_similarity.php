@@ -17,7 +17,7 @@ return [
     */
     'location_threshold' => (float) env('ASPIRATION_SIMILARITY_LOCATION_THRESHOLD', 0.70),
 
-    'problem_threshold' => (float) env('ASPIRATION_SIMILARITY_PROBLEM_THRESHOLD', 0.70),
+    'problem_threshold' => (float) env('ASPIRATION_SIMILARITY_PROBLEM_THRESHOLD', 0.60),
 
     /*
     | Ambang skor gabungan. Skor gabungan hanya dipakai sebagai ringkasan
@@ -26,14 +26,14 @@ return [
     */
     'high_threshold' => (float) env(
         'ASPIRATION_SIMILARITY_HIGH_THRESHOLD',
-        env('ASPIRATION_SIMILARITY_THRESHOLD', 0.70)
+        env('ASPIRATION_SIMILARITY_THRESHOLD', 0.60)
     ),
 
     /*
     | Dipertahankan agar konfigurasi lama tetap terbaca. Fitur tidak lagi
     | memakai tingkat kemiripan sedang/rendah untuk memberi label.
     */
-    'threshold' => (float) env('ASPIRATION_SIMILARITY_THRESHOLD', 0.70),
+    'threshold' => (float) env('ASPIRATION_SIMILARITY_THRESHOLD', 0.60),
 
     'medium_threshold' => (float) env('ASPIRATION_SIMILARITY_MEDIUM_THRESHOLD', 0.55),
 

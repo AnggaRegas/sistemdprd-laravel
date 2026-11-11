@@ -153,7 +153,6 @@
                 </div>
             </div>
 
-            @include('reports.partials.kamus-panel')
 
             @php
                 $activeAssignment = $report->penugasans

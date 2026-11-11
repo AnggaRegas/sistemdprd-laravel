@@ -6,13 +6,21 @@
             ['label' => 'Laporan Masyarakat', 'url' => route('laporan.index')],
             ['label' => $selectedMember->nama_lengkap],
         ]
-        : [
-            ['label' => 'Beranda', 'url' => route('dashboard')],
-            ['label' => 'Laporan Masyarakat'],
-        ],
+        : (
+            $reports !== null
+                ? [
+                    ['label' => 'Beranda', 'url' => route('dashboard')],
+                    ['label' => 'Laporan Masyarakat', 'url' => route('laporan.index')],
+                    ['label' => 'Semua Aspirasi'],
+                ]
+                : [
+                    ['label' => 'Beranda', 'url' => route('dashboard')],
+                    ['label' => 'Laporan Masyarakat'],
+                ]
+        ),
 ])
 
-@section('title', $selectedMember ? 'Laporan '.$selectedMember->nama_lengkap : 'Laporan Masyarakat')
+@section('title', $selectedMember ? 'Laporan '.$selectedMember->nama_lengkap : ($reports !== null ? 'Semua Aspirasi Masyarakat' : 'Laporan Masyarakat'))
 
 @section('content')
     @php
@@ -23,20 +31,24 @@
 
     <x-admin.page-header
         eyebrow="Aspirasi masyarakat"
-        :title="$selectedMember ? 'Laporan untuk '.$selectedMember->nama_lengkap : 'Laporan Masyarakat'"
+        :title="$selectedMember ? 'Laporan untuk '.$selectedMember->nama_lengkap : ($reports !== null ? 'Semua Aspirasi Masyarakat' : 'Laporan Masyarakat')"
         :description="$selectedMember
             ? 'Daftar aspirasi yang ditujukan kepada anggota DPRD ini.'
-            : 'Pilih folder anggota DPRD untuk melihat aspirasi yang ditujukan kepadanya.'"
+            : 'Kelola, pantau, dan kelompokkan aspirasi masyarakat yang masuk untuk ditindaklanjuti.'"
     >
-        @if ($selectedMember)
+        <a href="{{ route('laporan.index', ['anggota' => 'semua']) }}" class="btn btn-emerald">
+            <i class="ri-list-check-2" aria-hidden="true"></i>
+            Lihat Semua Aspirasi Masyarakat
+        </a>
+        @if ($reports !== null)
             <a href="{{ route('laporan.index') }}" class="btn btn-outline-soft">
-                <i class="ri-arrow-left-line" aria-hidden="true"></i>
-                Kembali ke Folder
+                <i class="ri-folder-user-line" aria-hidden="true"></i>
+                Folder Anggota
             </a>
         @endif
     </x-admin.page-header>
 
-    @if (! $selectedMember)
+    @if ($reports === null)
         <div class="app-card filter-card mb-3">
             <form method="GET" action="{{ route('laporan.index') }}" class="filter-bar" role="search">
                 <div class="filter-search">
@@ -112,32 +124,63 @@
         </div>
     @else
         <div class="app-card filter-card mb-3">
-            <form method="GET" action="{{ route('laporan.index') }}" class="filter-bar" role="search">
-                <input type="hidden" name="anggota" value="{{ $selectedMember->id }}">
-                <div class="filter-search">
-                    <i class="ri-search-line" aria-hidden="true"></i>
-                    <input type="search" name="q" value="{{ $searchQuery }}" placeholder="Cari nama pelapor atau isi laporan" aria-label="Cari laporan">
-                </div>
+            <form method="GET" action="{{ route('laporan.index') }}" class="p-3" role="search">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-md-4">
+                        <label for="filterAnggota" class="form-label mb-1" style="font-size: 11.5px; font-weight: 700; color: #405149;">
+                            Anggota DPRD
+                        </label>
+                        <select id="filterAnggota" name="anggota" class="form-select form-select-sm filter-select" data-auto-submit aria-label="Filter Anggota DPRD">
+                            <option value="semua" @selected($selectedMemberParam === 'semua' || (!$selectedMember && $reports !== null))>Semua Anggota DPRD</option>
+                            @foreach ($members as $member)
+                                <option value="{{ $member->id }}" @selected((string) $selectedMemberParam === (string) $member->id)>
+                                    {{ $member->nama_lengkap }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
 
-                <select name="kamus_status" class="filter-select" data-auto-submit aria-label="Filter status Kamus Acuan">
-                    <option value="">Semua status kamus</option>
-                    @foreach ($kamusStatuses as $statusValue => $statusLabel)
-                        <option value="{{ $statusValue }}" @selected($filters['kamus_status'] === $statusValue)>{{ $statusLabel }}</option>
-                    @endforeach
-                </select>
+                    <div class="col-12 col-md-4">
+                        <label for="filterKemiripan" class="form-label mb-1" style="font-size: 11.5px; font-weight: 700; color: #405149;">
+                            Kemiripan Aspirasi
+                        </label>
+                        <select id="filterKemiripan" name="kemiripan" class="form-select form-select-sm filter-select" data-auto-submit aria-label="Filter Kemiripan Aspirasi">
+                            <option value="" @selected($filters['kemiripan'] === '')>Semua Aspirasi</option>
+                            <option value="memiliki_kemiripan" @selected($filters['kemiripan'] === 'memiliki_kemiripan')>Aspirasi Memiliki Kemiripan</option>
+                            <option value="tidak_memiliki_kemiripan" @selected($filters['kemiripan'] === 'tidak_memiliki_kemiripan')>Aspirasi Tidak Memiliki Kemiripan</option>
+                        </select>
+                    </div>
 
-                <select name="kamus_tahun" class="filter-select" data-auto-submit aria-label="Filter tahun Kamus Acuan">
-                    <option value="">Semua tahun kamus</option>
-                    @foreach ($kamusTahunOptions as $tahun)
-                        <option value="{{ $tahun }}" @selected($filters['kamus_tahun'] === (string) $tahun)>{{ $tahun }}</option>
-                    @endforeach
-                </select>
+                    <div class="col-12 col-md-4">
+                        <label for="filterStatusKamus" class="form-label mb-1" style="font-size: 11.5px; font-weight: 700; color: #405149;">
+                            Status Kamus
+                        </label>
+                        <select id="filterStatusKamus" name="status_kamus" class="form-select form-select-sm filter-select" data-auto-submit aria-label="Filter Status Kamus">
+                            <option value="" @selected($filters['status_kamus'] === '')>Semua Status Kamus</option>
+                            <option value="sesuai" @selected($filters['status_kamus'] === 'sesuai')>Sesuai Kamus</option>
+                            <option value="tidak_ditemukan" @selected($filters['status_kamus'] === 'tidak_ditemukan')>Tidak Ditemukan di Kamus</option>
+                        </select>
+                    </div>
 
-                <div class="filter-actions">
-                    <button type="submit" class="btn btn-emerald">Cari laporan</button>
-                    @if ($hasFolderQuery)
-                        <a href="{{ route('laporan.index', ['anggota' => $selectedMember->id]) }}" class="filter-reset">Hapus filter</a>
-                    @endif
+                    <div class="col-12 col-md-8 col-lg-9">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white border-end-0 text-muted">
+                                <i class="ri-search-line" aria-hidden="true"></i>
+                            </span>
+                            <input type="search" name="q" value="{{ $searchQuery }}" class="form-control border-start-0" placeholder="Cari nama pelapor atau isi laporan" aria-label="Cari laporan">
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-4 col-lg-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-emerald btn-sm flex-grow-1">
+                            <i class="ri-filter-3-line" aria-hidden="true"></i> Cari laporan
+                        </button>
+                        @if ($hasFolderQuery)
+                            <a href="{{ route('laporan.index', ['anggota' => 'semua']) }}" class="btn btn-outline-soft btn-sm text-nowrap">
+                                Reset Filter
+                            </a>
+                        @endif
+                    </div>
                 </div>
             </form>
         </div>
@@ -154,7 +197,7 @@
                 <x-admin.empty-state
                     icon="ri-chat-3-line"
                     title="Belum ada laporan"
-                    description="Aspirasi untuk anggota DPRD ini akan tampil di sini."
+                    :description="$selectedMember ? 'Aspirasi untuk anggota DPRD ini akan tampil di sini.' : 'Tidak ada aspirasi masyarakat yang memenuhi kriteria filter.'"
                 />
             @else
                 <div class="table-responsive">
@@ -166,7 +209,7 @@
                                 <th scope="col">Isi aspirasi</th>
                                 <th scope="col">Kemiripan</th>
                                 <th scope="col">Status</th>
-                                <th scope="col" class="d-none d-lg-table-cell">Kamus Acuan</th>
+                                <th scope="col">Status Kamus</th>
                                 <th scope="col"><span class="visually-hidden">Tindakan</span></th>
                             </tr>
                         </thead>
@@ -182,6 +225,14 @@
                                     };
                                     $matches = $similarityMatches->get($report->id, []);
                                     $matchCount = count($matches);
+                                    $panel = $similarityPanels->get($report->id);
+                                    $highestScore = null;
+                                    if (!empty($matches)) {
+                                        $highestScore = collect($matches)->max('score');
+                                    } elseif ($panel && isset($panel['highest_score']) && $panel['highest_score'] > 0) {
+                                        $highestScore = $panel['highest_score'];
+                                    }
+                                    $highestPercentage = $highestScore !== null ? (int) round($highestScore * 100) : null;
                                     $isMain = $report->similarity_status === \App\Models\LaporanMasyarakat::SIMILARITY_STATUS_UTAMA;
                                     $isMerged = $report->is_duplicate_merged;
                                     $isSeparated = $report->similarity_status === \App\Models\LaporanMasyarakat::SIMILARITY_STATUS_DIPISAH;
@@ -190,7 +241,7 @@
                                     $groupTotal = max($groupMembersCount, $matchCount + ($matchCount > 0 ? 1 : 0));
                                     $similarHeadline = $groupTotal >= 3
                                         ? 'Terdapat '.$groupTotal.' Aspirasi Serupa'
-                                        : 'Aspirasi Mirip Ditemukan';
+                                        : 'Aspirasi Mirip';
                                 @endphp
                                 <tr class="{{ $isUnread ? 'is-unread-report' : '' }}">
                                     <td>
@@ -231,8 +282,13 @@
                                             </form>
                                         @elseif ($isMain)
                                             <span class="status-badge status-success">Aspirasi Utama</span>
-                                            @if ($matchCount > 0)
-                                                <span class="cell-sub d-block mt-1">{{ $similarHeadline }}</span>
+                                            @if ($matchCount > 0 || $highestPercentage !== null)
+                                                <span class="cell-sub d-block mt-1">
+                                                    @if ($highestPercentage !== null)
+                                                        Kemiripan: <strong>{{ $highestPercentage }}%</strong> &middot;
+                                                    @endif
+                                                    {{ $similarHeadline }}
+                                                </span>
                                                 <button type="button"
                                                         class="btn btn-outline-soft btn-sm mt-2"
                                                         data-bs-toggle="modal"
@@ -241,23 +297,34 @@
                                                     Bandingkan Aspirasi
                                                 </button>
                                             @endif
-                                        @elseif ($matchCount > 0 || $groupMembersCount >= 2)
-                                            <span class="status-badge status-warning">{{ $similarHeadline }}</span>
+                                        @elseif ($matchCount > 0 || $groupMembersCount >= 2 || $highestPercentage !== null)
+                                            @if ($groupTotal >= 3)
+                                                <span class="status-badge status-primary" style="background: #ede9fe; color: #5b21b6; border-color: #ddd6fe;">{{ $similarHeadline }}</span>
+                                            @elseif ($highestPercentage !== null)
+                                                <span class="status-badge status-info" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">Aspirasi Mirip ({{ $highestPercentage }}%)</span>
+                                            @else
+                                                <span class="status-badge status-info" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">Aspirasi Mirip</span>
+                                            @endif
                                             <span class="cell-sub d-block mt-1">
+                                                @if ($highestPercentage !== null)
+                                                    Kemiripan: <strong>{{ $highestPercentage }}%</strong> &middot;
+                                                @endif
                                                 {{ $groupTotal >= 3
                                                     ? 'Kelompok ini memiliki '.$groupTotal.' aspirasi yang saling mirip.'
-                                                    : 'Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.' }}
+                                                    : 'Aspirasi Mirip Ditemukan: Terdapat aspirasi sebelumnya yang memiliki kemiripan tinggi.' }}
                                             </span>
                                             @if ($isSeparated)
                                                 <span class="cell-sub d-block mt-1">Sudah ditandai bukan duplikat.</span>
                                             @endif
-                                            <button type="button"
-                                                    class="btn btn-outline-soft btn-sm mt-2"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#similarityModal{{ $report->id }}">
-                                                <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
-                                                Bandingkan Aspirasi
-                                            </button>
+                                            @if ($matchCount > 0 || ($panel && !empty($panel['matches'])))
+                                                <button type="button"
+                                                        class="btn btn-outline-soft btn-sm mt-2"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#similarityModal{{ $report->id }}">
+                                                    <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
+                                                    Bandingkan Aspirasi
+                                                </button>
+                                            @endif
                                         @elseif ($isSeparated)
                                             <span class="status-badge status-neutral">Diproses Terpisah</span>
                                         @else
@@ -265,13 +332,11 @@
                                         @endif
                                     </td>
                                     <td><span class="status-badge status-{{ $statusTone }}">{{ $report->status_label }}</span></td>
-                                    <td class="d-none d-lg-table-cell">
-                                        <span class="status-badge status-{{ $report->kamus_status_tone }}">{{ $report->kamus_status_label }}</span>
-                                        @if ($report->kamus_entri_id)
-                                            <span class="cell-sub d-block mt-1">{{ $report->kamus_entri_label }}</span>
-                                        @endif
-                                        @if ($report->kamus_tahun)
-                                            <span class="cell-sub d-block">Kamus {{ $report->kamus_tahun }}</span>
+                                    <td>
+                                        @if ($report->kamus_status === \App\Models\LaporanKamusHasil::STATUS_SESUAI)
+                                            <span class="status-badge status-success">Sesuai Kamus</span>
+                                        @else
+                                            <span class="status-badge status-neutral">Tidak Ditemukan di Kamus</span>
                                         @endif
                                     </td>
                                     <td>
@@ -890,7 +955,7 @@
                 updateSelection();
             });
 
-            @if (! $selectedMember)
+            @if ($reports === null)
                 (function () {
                     var pollUrl = @json(route('laporan.unread-counts'));
                     if (!pollUrl) return;

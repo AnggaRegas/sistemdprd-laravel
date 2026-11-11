@@ -138,22 +138,45 @@ class ReportController extends Controller
     public function administratorIndex(Request $request): View
     {
         $user = $request->user();
-        $selectedMemberId = (int) $request->query('anggota');
-        $memberUnreadCounts = LaporanMasyarakat::unreadNewCountsByMemberFor($user);
-        $unreadReportLookup = [];
+        $rawAnggota = $request->query('anggota');
+        $selectedMemberParam = is_string($rawAnggota) || is_numeric($rawAnggota) ? trim((string) $rawAnggota) : '';
+        $selectedMemberId = ctype_digit($selectedMemberParam) ? (int) $selectedMemberParam : 0;
+        $showAllMembers = $selectedMemberParam === 'semua' || $selectedMemberParam === 'all';
+
+        $rawKemiripan = $request->query('kemiripan');
+        $kemiripanFilter = in_array($rawKemiripan, ['memiliki_kemiripan', 'tidak_memiliki_kemiripan'], true)
+            ? (string) $rawKemiripan
+            : '';
+
+        $rawStatusKamus = $request->query('status_kamus') ?? $request->query('kamus_status');
+        $statusKamusFilter = in_array($rawStatusKamus, ['sesuai', 'tidak_ditemukan'], true)
+            ? (string) $rawStatusKamus
+            : ($this->kamusStatusFilter($rawStatusKamus));
 
         $filters = [
             'q' => Str::limit(trim((string) $request->query('q')), 100, ''),
-            'kamus_status' => $this->kamusStatusFilter($request->query('kamus_status')),
+            'anggota' => $selectedMemberParam,
+            'kemiripan' => $kemiripanFilter,
+            'status_kamus' => $statusKamusFilter,
+            'kamus_status' => $statusKamusFilter,
             'kamus_tahun' => $this->kamusTahunFilter($request->query('kamus_tahun')),
         ];
+
+        $memberUnreadCounts = LaporanMasyarakat::unreadNewCountsByMemberFor($user);
+        $unreadReportLookup = [];
+
+        $shouldShowTable = $selectedMemberId > 0
+            || $showAllMembers
+            || $kemiripanFilter !== ''
+            || $statusKamusFilter !== ''
+            || $request->has('page');
 
         $membersQuery = DprdMember::query()
             ->where('is_active', true)
             ->withCount('laporan')
             ->orderBy('nama_lengkap');
 
-        if ($selectedMemberId === 0 && $filters['q'] !== '') {
+        if (! $shouldShowTable && $filters['q'] !== '') {
             $membersQuery->whereRaw('LOWER(nama_lengkap) LIKE ?', ['%'.Str::lower($filters['q']).'%']);
         }
 
@@ -164,38 +187,80 @@ class ReportController extends Controller
         $filteredTotal = 0;
         $returnUrl = $request->fullUrl();
 
-        if ($selectedMemberId > 0) {
-            $selectedMember = DprdMember::query()
-                ->where('is_active', true)
-                ->whereKey($selectedMemberId)
-                ->firstOrFail();
-
-            $query = $selectedMember->laporan()
+        if ($shouldShowTable) {
+            $query = LaporanMasyarakat::query()
                 ->with(['member', 'kamusEntri']);
 
-            if ($filters['q'] !== '') {
-                $needle = '%'.Str::lower($filters['q']).'%';
+            if ($selectedMemberId > 0) {
+                $selectedMember = DprdMember::query()
+                    ->where('is_active', true)
+                    ->whereKey($selectedMemberId)
+                    ->firstOrFail();
 
-                $query->where(function ($query) use ($needle) {
-                    $query->whereRaw('LOWER(nomor_tiket) LIKE ?', [$needle])
-                        ->orWhereRaw('LOWER(pelapor_nama) LIKE ?', [$needle])
-                        ->orWhereRaw('LOWER(ringkasan) LIKE ?', [$needle]);
-                });
+                $query->where('dprd_member_id', $selectedMemberId);
             }
 
-            if ($filters['kamus_status'] !== '') {
-                if ($filters['kamus_status'] === LaporanKamusHasil::STATUS_BELUM_DIPERIKSA) {
-                    $query->where(function ($query) {
-                        $query->whereNull('kamus_status')
+            if ($kemiripanFilter === 'memiliki_kemiripan') {
+                $query->where(function ($q) {
+                    $q->whereNotNull('similarity_group_id')
+                        ->orWhereNotNull('duplicate_of_id')
+                        ->orWhere('similarity_level', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI)
+                        ->orWhereHas('similarityResults', function ($sub) {
+                            $sub->where('similarity_level', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+                        })
+                        ->orWhereHas('comparedSimilarityResults', function ($sub) {
+                            $sub->where('similarity_level', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+                        });
+                });
+            } elseif ($kemiripanFilter === 'tidak_memiliki_kemiripan') {
+                $query->whereNull('similarity_group_id')
+                    ->whereNull('duplicate_of_id')
+                    ->where(function ($q) {
+                        $q->whereNull('similarity_level')
+                            ->orWhere('similarity_level', '<>', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+                    })
+                    ->whereDoesntHave('similarityResults', function ($sub) {
+                        $sub->where('similarity_level', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+                    })
+                    ->whereDoesntHave('comparedSimilarityResults', function ($sub) {
+                        $sub->where('similarity_level', LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI);
+                    });
+            }
+
+            if ($statusKamusFilter === 'sesuai') {
+                $query->where('kamus_status', LaporanKamusHasil::STATUS_SESUAI);
+            } elseif ($statusKamusFilter === 'tidak_ditemukan') {
+                $query->where(function ($q) {
+                    $q->whereNull('kamus_status')
+                        ->orWhere('kamus_status', '<>', LaporanKamusHasil::STATUS_SESUAI);
+                });
+            } elseif ($statusKamusFilter !== '') {
+                if ($statusKamusFilter === LaporanKamusHasil::STATUS_BELUM_DIPERIKSA) {
+                    $query->where(function ($q) {
+                        $q->whereNull('kamus_status')
                             ->orWhere('kamus_status', LaporanKamusHasil::STATUS_BELUM_DIPERIKSA);
                     });
                 } else {
-                    $query->where('kamus_status', $filters['kamus_status']);
+                    $query->where('kamus_status', $statusKamusFilter);
                 }
             }
 
             if ($filters['kamus_tahun'] !== '') {
                 $query->where('kamus_tahun', (int) $filters['kamus_tahun']);
+            }
+
+            if ($filters['q'] !== '') {
+                $needle = '%'.Str::lower($filters['q']).'%';
+
+                $query->where(function ($q) use ($needle) {
+                    $q->whereRaw('LOWER(nomor_tiket) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(pelapor_nama) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(ringkasan) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(isi) LIKE ?', [$needle])
+                        ->orWhereHas('member', function ($mq) use ($needle) {
+                            $mq->whereRaw('LOWER(nama_lengkap) LIKE ?', [$needle]);
+                        });
+                });
             }
 
             $filteredTotal = (clone $query)->count();
@@ -207,6 +272,8 @@ class ReportController extends Controller
                 ->withQueryString();
 
             $reports->getCollection()->load([
+                'member:id,nama_lengkap,jabatan',
+                'kamusEntri:id,kode,klasifikasi',
                 'similarityGroup:id,kode,status,main_laporan_id',
                 'similarityGroup.members:id,laporan_similarity_group_id,laporan_masyarakat_id,peran',
                 'duplicateOf:id,nomor_tiket,ringkasan',
@@ -227,25 +294,30 @@ class ReportController extends Controller
             $unreadReportLookup = array_flip($unreadReportIds);
         }
 
+        $hasActiveFilters = $selectedMemberParam !== ''
+            || $kemiripanFilter !== ''
+            || $statusKamusFilter !== ''
+            || $filters['kamus_tahun'] !== ''
+            || $filters['q'] !== '';
+
         return view('reports.admin_index', [
             'members' => $members,
             'memberUnreadCounts' => $memberUnreadCounts,
             'unreadReportLookup' => $unreadReportLookup,
             'selectedMember' => $selectedMember,
+            'selectedMemberParam' => $selectedMemberParam,
             'reports' => $reports,
             'filteredTotal' => $filteredTotal,
             'similarityMatches' => $similarityMatches ?? collect(),
             'similarityPanels' => $similarityPanels ?? collect(),
             'searchQuery' => $filters['q'],
             'filters' => $filters,
+            'hasActiveFilters' => $hasActiveFilters,
             'kamusStatuses' => LaporanKamusHasil::STATUS_LABELS,
             'kamusTahunOptions' => $this->kamusTahunOptions(),
-            'hasKamusFilter' => $filters['kamus_status'] !== ''
+            'hasKamusFilter' => $statusKamusFilter !== ''
                 || $filters['kamus_tahun'] !== '',
-            'hasFolderQuery' => $selectedMemberId > 0
-                || $filters['q'] !== ''
-                || $filters['kamus_status'] !== ''
-                || $filters['kamus_tahun'] !== '',
+            'hasFolderQuery' => $hasActiveFilters,
             'returnUrl' => $returnUrl,
         ]);
     }
@@ -1049,17 +1121,16 @@ class ReportController extends Controller
         mixed $locationScore,
         mixed $problemScore
     ): bool {
-        /*
-         * Baris lama tanpa bukti skor ganda tidak pernah dianggap mirip:
-         * label hanya boleh muncul bila lokasi DAN inti permasalahan lolos
-         * ambangnya masing-masing.
-         */
-        if ($locationScore === null || $problemScore === null) {
+        if ($problemScore === null) {
             return false;
         }
 
-        return (float) $locationScore >= (float) config('aspiration_similarity.location_threshold', 0.70)
-            && (float) $problemScore >= (float) config('aspiration_similarity.problem_threshold', 0.70);
+        $prob = (float) $problemScore;
+        $loc = $locationScore !== null ? (float) $locationScore : 0.0;
+        $probThreshold = (float) config('aspiration_similarity.problem_threshold', 0.60);
+        $locThreshold = (float) config('aspiration_similarity.location_threshold', 0.70);
+
+        return $prob >= $probThreshold || ($loc >= $locThreshold && $prob >= 0.35);
     }
 
     /**

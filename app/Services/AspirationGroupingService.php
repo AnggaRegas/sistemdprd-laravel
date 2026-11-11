@@ -33,42 +33,51 @@ class AspirationGroupingService
     /**
      * Susun ulang kelompok kemiripan untuk satu anggota DPRD.
      *
+     * Seluruh proses berjalan dalam satu transaksi dan mengunci baris anggota
+     * DPRD. Kunci ini menyerialkan pemeriksaan ulang untuk anggota yang sama
+     * sehingga dua proses yang berjalan bersamaan tidak dapat menyisipkan
+     * keanggotaan atau pasangan yang sama dua kali.
+     *
      * @return array<string, int|float>
      */
     public function regroupMember(DprdMember $member, ?User $actor = null): array
     {
-        $reports = LaporanMasyarakat::query()
-            ->where('dprd_member_id', $member->id)
-            ->orderBy('id')
-            ->get();
+        return DB::transaction(function () use ($member, $actor) {
+            DprdMember::query()
+                ->whereKey($member->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($reports->isEmpty()) {
-            return [
-                'reports' => 0,
-                'pairs' => 0,
-                'groups' => 0,
-                'threshold_high' => (float) config('aspiration_similarity.problem_threshold', 0.70),
-                'threshold_medium' => (float) config('aspiration_similarity.problem_threshold', 0.70),
-            ];
-        }
+            $reports = LaporanMasyarakat::query()
+                ->where('dprd_member_id', $member->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
 
-        $analysis = $this->similarity->analyzeCorpus($reports);
+            if ($reports->isEmpty()) {
+                return [
+                    'reports' => 0,
+                    'pairs' => 0,
+                    'groups' => 0,
+                    'threshold_high' => (float) config('aspiration_similarity.problem_threshold', 0.70),
+                    'threshold_medium' => (float) config('aspiration_similarity.problem_threshold', 0.70),
+                ];
+            }
 
-        $groupCount = DB::transaction(function () use ($member, $reports, $analysis, $actor) {
+            $analysis = $this->similarity->analyzeCorpus($reports);
+
             $this->persistPairs($reports, $analysis);
             $this->persistAnalysisRuns($member, $reports, $analysis);
             $groupCount = $this->persistGroups($member, $reports, $analysis, $actor);
 
-            return $groupCount;
+            return [
+                'reports' => $reports->count(),
+                'pairs' => count($analysis['pairs']),
+                'groups' => $groupCount,
+                'threshold_high' => $analysis['threshold_high'],
+                'threshold_medium' => $analysis['threshold_medium'],
+            ];
         });
-
-        return [
-            'reports' => $reports->count(),
-            'pairs' => count($analysis['pairs']),
-            'groups' => $groupCount,
-            'threshold_high' => $analysis['threshold_high'],
-            'threshold_medium' => $analysis['threshold_medium'],
-        ];
     }
 
     /**
@@ -245,6 +254,19 @@ class AspirationGroupingService
         $lockedIds = array_values(array_unique(array_merge($lockedIds, $decidedMemberIds)));
 
         $unlocked = $reports->reject(fn (LaporanMasyarakat $report) => in_array((int) $report->id, $lockedIds, true));
+        $unlockedIds = $unlocked->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        /*
+         * Unique index laporan_masyarakat_id adalah sumber kebenaran: satu
+         * aspirasi hanya boleh memiliki satu baris keanggotaan. Baris sisa
+         * milik aspirasi yang belum diputuskan dibersihkan lebih dahulu agar
+         * pemeriksaan ulang tetap idempoten.
+         */
+        if ($unlockedIds !== []) {
+            LaporanSimilarityGroupMember::query()
+                ->whereIn('laporan_masyarakat_id', $unlockedIds)
+                ->delete();
+        }
 
         $matrix = [];
         $edges = [];
@@ -265,17 +287,24 @@ class AspirationGroupingService
         }
 
         $clusters = $this->completeLinkage(
-            $unlocked->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $unlockedIds,
             $edges,
             $matrix,
             (float) $analysis['threshold_medium']
         );
 
         $sequence = $this->nextSequence($member);
-        $clusterIds = [];
+        $assignedIds = [];
         $created = 0;
 
         foreach ($clusters as $cluster) {
+            $cluster = array_values(array_unique(array_map('intval', $cluster)));
+            $cluster = array_values(array_diff($cluster, $assignedIds));
+
+            if (count($cluster) < 2) {
+                continue;
+            }
+
             $kode = 'KLP-'.str_pad((string) $sequence++, 2, '0', STR_PAD_LEFT);
 
             while (LaporanSimilarityGroup::query()
@@ -312,7 +341,7 @@ class AspirationGroupingService
             ]);
 
             foreach ($cluster as $reportId) {
-                $clusterIds[] = $reportId;
+                $assignedIds[] = $reportId;
                 $report = $reports->firstWhere('id', $reportId);
 
                 if (! $report) {
@@ -338,9 +367,7 @@ class AspirationGroupingService
                     }
                 }
 
-                LaporanSimilarityGroupMember::query()->create([
-                    'laporan_similarity_group_id' => $group->id,
-                    'laporan_masyarakat_id' => $reportId,
+                $this->syncMembership($group, $reportId, [
                     'peran' => LaporanSimilarityGroupMember::PERAN_ANGGOTA,
                     'similarity_level' => $analysis['reports'][$reportId]['level'] ?? null,
                     'similarity_score' => $bestScore > 0 ? $bestScore : null,
@@ -361,7 +388,7 @@ class AspirationGroupingService
          * kemiripannya, tanpa diberi kelompok.
          */
         foreach ($unlocked as $report) {
-            if (in_array((int) $report->id, $clusterIds, true)) {
+            if (in_array((int) $report->id, $assignedIds, true)) {
                 continue;
             }
 
@@ -388,6 +415,109 @@ class AspirationGroupingService
         }
 
         return $created;
+    }
+
+    /**
+     * Pastikan satu aspirasi memiliki tepat satu baris keanggotaan kelompok.
+     *
+     * Unique index laporan_masyarakat_id pada tabel
+     * laporan_similarity_group_members menjamin satu aspirasi tidak dapat
+     * berada pada dua kelompok. Karena itu kunci pencarian selalu memakai
+     * laporan_masyarakat_id, bukan pasangan (kelompok, laporan). Cara ini
+     * membuat penyimpanan tetap benar meski data lama sempat tidak sinkron.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function syncMembership(
+        LaporanSimilarityGroup $group,
+        int $reportId,
+        array $attributes = []
+    ): LaporanSimilarityGroupMember {
+        $membership = LaporanSimilarityGroupMember::query()->updateOrCreate(
+            ['laporan_masyarakat_id' => $reportId],
+            array_merge($attributes, ['laporan_similarity_group_id' => $group->id])
+        );
+
+        LaporanMasyarakat::withTrashed()
+            ->whereKey($reportId)
+            ->update(['similarity_group_id' => $group->id]);
+
+        return $membership;
+    }
+
+    /**
+     * Tambahkan aspirasi ke kelompok bila belum menjadi anggota kelompok mana
+     * pun. Bila sudah menjadi anggota, baris yang ada dipertahankan agar
+     * keputusan Super Admin tidak tertimpa.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function ensureMembership(
+        LaporanSimilarityGroup $group,
+        int $reportId,
+        array $attributes = []
+    ): LaporanSimilarityGroupMember {
+        $membership = LaporanSimilarityGroupMember::query()->firstOrCreate(
+            ['laporan_masyarakat_id' => $reportId],
+            array_merge($attributes, ['laporan_similarity_group_id' => $group->id])
+        );
+
+        if ((int) $membership->laporan_similarity_group_id !== (int) $group->id) {
+            $membership = $this->syncMembership($group, $reportId, $attributes);
+        }
+
+        LaporanMasyarakat::withTrashed()
+            ->whereKey($reportId)
+            ->update(['similarity_group_id' => $group->id]);
+
+        return $membership;
+    }
+
+    /**
+     * Gabungkan kelompok sumber ke kelompok tujuan.
+     *
+     * Keanggotaan dipindahkan, bukan disalin, sehingga unique index
+     * laporan_masyarakat_id tetap terjaga. Kelompok sumber ditandai
+     * dibubarkan dan riwayat keputusannya tidak dihapus.
+     */
+    public function mergeGroups(
+        LaporanSimilarityGroup $target,
+        LaporanSimilarityGroup $source,
+        ?User $actor = null
+    ): void {
+        if ((int) $target->id === (int) $source->id) {
+            return;
+        }
+
+        LaporanSimilarityGroupMember::query()
+            ->where('laporan_similarity_group_id', $source->id)
+            ->update(['laporan_similarity_group_id' => $target->id]);
+
+        LaporanMasyarakat::withTrashed()
+            ->where('similarity_group_id', $source->id)
+            ->update(['similarity_group_id' => $target->id]);
+
+        $wasDecided = $target->decided_at !== null || $source->decided_at !== null;
+
+        $target->forceFill([
+            'main_laporan_id' => $target->main_laporan_id ?? $source->main_laporan_id,
+            'status' => $wasDecided
+                ? LaporanSimilarityGroup::STATUS_DIPUTUSKAN
+                : $target->status,
+            'decided_by' => $target->decided_by ?? $source->decided_by,
+            'decided_at' => $target->decided_at ?? $source->decided_at,
+            'catatan' => trim((string) $target->catatan."\nKelompok ".$source->kode.' digabungkan ke kelompok ini.')
+                ?: null,
+        ])->save();
+
+        $source->forceFill([
+            'status' => LaporanSimilarityGroup::STATUS_DIBUBARKAN,
+            'main_laporan_id' => null,
+            'decided_by' => $source->decided_by ?? $actor?->id,
+            'decided_at' => $source->decided_at ?? now(),
+            'catatan' => trim((string) $source->catatan."\nKelompok ini digabungkan ke kelompok ".$target->kode.'.')
+                ?: null,
+        ])->save();
     }
 
     /**

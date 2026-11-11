@@ -80,7 +80,8 @@ class AspirationSimilarityService
         'sedikit', 'sehingga', 'selain', 'selalu', 'selama', 'seluruh', 'semua', 'sendiri', 'seperti',
         'serta', 'sesuai', 'setelah', 'setiap', 'siapa', 'sini', 'suatu', 'sudah', 'supaya', 'tak', 'tanpa',
         'tentang', 'tentu', 'terhadap', 'tersebut', 'tetap', 'tetapi', 'tiap', 'tidak', 'tiga', 'untuk',
-        'walau', 'yang', 'yaitu', 'yakni', 'warga', 'kami', 'kami', 'kami', 'mohon', 'tolong',
+        'walau', 'yang', 'yaitu', 'yakni', 'warga', 'tolong',
+        'bro', 'gan', 'min', 'kak', 'bang', 'pak', 'bu', 'dong', 'sih', 'nih', 'tuh', 'deh', 'halo',
     ];
 
     /**
@@ -220,9 +221,10 @@ class AspirationSimilarityService
                     $problemScore = $details['similarity'];
                     $location = $this->locationAnalysis($report, $candidate);
                     $combined = $this->combinedScore($problemScore, $location['score']);
-                    $passes = $location['status'] === 'ok'
-                        && $location['score'] >= $locationThreshold
-                        && $problemScore >= $problemThreshold;
+                    $passes = $problemScore >= $problemThreshold
+                        || ($location['status'] === 'ok'
+                            && $location['score'] >= $locationThreshold
+                            && $problemScore >= 0.35);
 
                     $shared = $this->sharedTerms($newVector, $vectors[$candidate->id] ?? []);
 
@@ -417,9 +419,10 @@ class AspirationSimilarityService
                     }
                 }
 
-                $passes = $location['status'] === 'ok'
-                    && $location['score'] >= $locationThreshold
-                    && $problemScore >= $problemThreshold;
+                $passes = $problemScore >= $problemThreshold
+                    || ($location['status'] === 'ok'
+                        && $location['score'] >= $locationThreshold
+                        && $problemScore >= 0.35);
 
                 if (! $passes) {
                     continue;
@@ -490,16 +493,24 @@ class AspirationSimilarityService
 
     /**
      * Teks yang dibandingkan untuk inti permasalahan. Judul/ringkasan ikut
-     * dihitung karena biasanya memuat pokok aspirasi.
+     * dihitung bila berbeda dari isi, agar pokok aspirasi terwakili.
      */
     private function problemText(LaporanMasyarakat $report): string
     {
-        return trim(trim((string) $report->ringkasan).' '.trim((string) $report->isi));
+        $ringkasan = trim((string) $report->ringkasan);
+        $isi = trim((string) $report->isi);
+
+        if ($ringkasan === '' || $ringkasan === $isi || mb_stripos($isi, $ringkasan) !== false) {
+            return $isi;
+        }
+
+        return $ringkasan.' '.$isi;
     }
 
     /**
-     * Token inti permasalahan. Nama lokasi yang sudah dipakai pada skor lokasi
-     * dibuang dari teks masalah agar tidak menutupi kesamaan inti aspirasi.
+     * Token inti permasalahan diekstrak murni dari teks aspirasi masyarakat
+     * tanpa disaring oleh alamat pelapor, sehingga representasi TF-IDF konsisten
+     * antarpelapor berbeda.
      *
      * @param  array<string, mixed>|null  $stage
      * @return array<int, string>
@@ -507,22 +518,8 @@ class AspirationSimilarityService
     private function problemTokens(LaporanMasyarakat $report, ?array $stage = null): array
     {
         $stage ??= $this->preprocessStages($this->problemText($report));
-        $locationTokens = array_map(
-            fn (string $token) => $this->lightStem($token),
-            array_unique(array_merge(
-                $this->addressTokens((string) $report->pelapor_alamat),
-                $this->addressTokens((string) $report->kecamatan)
-            ))
-        );
 
-        if ($locationTokens === []) {
-            return $stage['final_tokens'];
-        }
-
-        return array_values(array_filter(
-            $stage['final_tokens'],
-            static fn (string $token) => ! in_array($token, $locationTokens, true)
-        ));
+        return $stage['final_tokens'];
     }
 
     /**
@@ -715,8 +712,9 @@ class AspirationSimilarityService
     }
 
     /**
-     * Skor gabungan hanya untuk ringkasan angka. Label kemiripan tinggi tetap
-     * ditentukan oleh kedua ambang terpisah.
+     * Gabungkan skor inti masalah dan skor lokasi. Bobot dapat disesuaikan
+     * lewat berkas konfigurasi. Nilai kemiripan teks aspirasi murni tetap
+     * dipertahankan agar dua laporan identik selalu mencapai 100%.
      */
     private function combinedScore(float $problemScore, float $locationScore): float
     {
@@ -725,12 +723,12 @@ class AspirationSimilarityService
         $total = $problemWeight + $locationWeight;
 
         if ($total <= 0.0) {
-            return 0.0;
+            return $problemScore;
         }
 
-        $score = (($problemScore * $problemWeight) + ($locationScore * $locationWeight)) / $total;
+        $blended = (($problemScore * $problemWeight) + ($locationScore * $locationWeight)) / $total;
 
-        return max(0.0, min(1.0, $score));
+        return max(0.0, min(1.0, max($problemScore, $blended)));
     }
 
     private function locationThreshold(): float
@@ -952,6 +950,19 @@ class AspirationSimilarityService
 
     private function lightStem(string $word): string
     {
+        // Kata dasar berakhiran -an atau bentuk kata penting yang tidak boleh terpotong
+        if (in_array($word, [
+            'jalan', 'hujan', 'hutan', 'taman', 'lahan', 'papan', 'hewan',
+            'korban', 'rawan', 'beban', 'pesan', 'badan', 'makan', 'depan',
+            'pasar', 'pohon',
+        ], true)) {
+            return $word;
+        }
+
+        if ($word === 'jalanan') {
+            return 'jalan';
+        }
+
         // Conservative Indonesian suffix normalization. It avoids a third-party
         // dependency while treating simple variants such as perbaikan/perbaiki
         // consistently without modifying stored aspirasi text.

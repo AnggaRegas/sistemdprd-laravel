@@ -358,18 +358,20 @@ class KamusAcuanTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.index', ['anggota' => $report->dprd_member_id]))
             ->assertOk()
-            ->assertSee('Kamus Acuan')
-            ->assertSee('SESUAI KAMUS')
-            ->assertSee($entry->kode);
+            ->assertSee('Status Kamus')
+            ->assertSee('Sesuai Kamus');
 
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Terdaftar di Kamus Acuan')
+            ->assertSee($report->pelapor_nama)
+            ->assertSee($report->ringkasan)
+            ->assertDontSee('Terdaftar di Kamus Acuan')
             ->assertDontSee('Mengapa hasil ini muncul?')
             ->assertDontSee('Riwayat Pemeriksaan Otomatis')
-            ->assertSee('Periksa Ulang Otomatis')
-            ->assertSee('Simpan Keputusan Manual');
+            ->assertDontSee('Periksa Ulang Otomatis')
+            ->assertDontSee('Simpan Keputusan Manual')
+            ->assertDontSee('id="kamus-acuan"', false);
     }
 
     public function test_activation_of_new_version_does_not_change_existing_auto_result_without_reevaluation(): void
@@ -482,9 +484,15 @@ class KamusAcuanTest extends TestCase
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertSee('Tidak Terdaftar di Kamus Acuan')
-            ->assertSee('Belum ada versi Kamus Acuan aktif')
-            ->assertSee('belum diperiksa terhadap Kamus Acuan');
+            ->assertSee($report->pelapor_nama)
+            ->assertDontSee('id="kamus-acuan"', false)
+            ->assertDontSee('Tidak Terdaftar di Kamus Acuan');
+
+        $this->actingAs($admin)
+            ->get(route('laporan.index', ['anggota' => $report->dprd_member_id]))
+            ->assertOk()
+            ->assertSee('Status Kamus')
+            ->assertSee('Tidak Ditemukan di Kamus');
     }
 
     public function test_new_version_copies_active_entries_without_reviving_deleted_ones(): void
