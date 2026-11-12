@@ -6,6 +6,8 @@ use App\Models\DprdMember;
 use App\Models\DprdRegion;
 use App\Models\LaporanMasyarakat;
 use App\Models\LaporanSimilarityResult;
+use App\Models\User;
+use Carbon\Carbon;
 use Database\Seeders\MemberSeeder;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -556,5 +558,29 @@ class PublicAspirationTest extends TestCase
         $this->seed(MemberSeeder::class);
 
         $this->assertSame(25, DprdMember::query()->count());
+    }
+
+    public function test_aspiration_submission_timestamp_is_accurately_displayed_in_wita(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $member = $this->member();
+
+        // 2026-11-12 00:30:00 UTC = 08:30 WITA
+        $knownUtc = Carbon::create(2026, 11, 12, 0, 30, 0, 'UTC');
+        Carbon::setTestNow($knownUtc);
+
+        $report = LaporanMasyarakat::factory()->create([
+            'dprd_member_id' => $member->id,
+            'created_at' => $knownUtc,
+            'updated_at' => $knownUtc->copy()->addHours(5),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('laporan.show', $report))
+            ->assertOk()
+            ->assertSee('12 November 2026, 08:30 WITA')
+            ->assertDontSee('00:30');
+
+        Carbon::setTestNow();
     }
 }

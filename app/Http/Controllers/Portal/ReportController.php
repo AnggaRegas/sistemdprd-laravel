@@ -430,6 +430,7 @@ class ReportController extends Controller
             'kamusStatusLabels' => LaporanKamusHasil::STATUS_LABELS,
             'kamusVerificationLabels' => LaporanKamusVerifikasi::KEPUTUSAN_LABELS,
             'similarityMatches' => $this->similarityMatchesFor(collect([$report]))->get($report->id, []),
+            'hasSimilarityResults' => $report->hasSimilarityResults(),
             'returnUrl' => SafeReturnUrl::reportsIndex($request->query('return_to'), $request),
         ]);
     }
@@ -1108,6 +1109,7 @@ class ReportController extends Controller
             'kecamatan' => $other->kecamatan,
             'kategori' => $other->kategori,
             'tanggal' => $other->tanggal_laporan?->toDateString(),
+            'created_at' => $other->created_at,
             'status_label' => $other->status_label,
             'similarity_status' => $other->similarity_status,
             'similarity_status_label' => $other->similarity_status_label,
@@ -1216,6 +1218,9 @@ class ReportController extends Controller
             'tanggal' => $isCurrent
                 ? $current->tanggal_laporan?->toDateString()
                 : $match['tanggal'],
+            'created_at' => $isCurrent
+                ? $current->created_at
+                : ($match['created_at'] ?? null),
             'is_current' => $isCurrent,
             'is_main' => $isCurrent
                 ? $current->similarity_status === LaporanMasyarakat::SIMILARITY_STATUS_UTAMA

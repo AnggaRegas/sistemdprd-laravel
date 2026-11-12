@@ -13,6 +13,12 @@ use Illuminate\Support\Str;
  */
 class PortalData
 {
+    /**
+     * Zona waktu tampilan sistem. Penyimpanan tetap mengikuti timezone
+     * aplikasi (UTC); konversi hanya dilakukan sekali saat ditampilkan.
+     */
+    public const DISPLAY_TIMEZONE = 'Asia/Makassar';
+
     public static function date(?string $date, bool $long = false): string
     {
         if (! $date) {
@@ -38,6 +44,30 @@ class PortalData
             : Carbon::parse((string) $value);
 
         return $date->locale('id')->translatedFormat($long ? 'd F Y H:i' : 'd M Y H:i');
+    }
+
+    /**
+     * Waktu tampilan dalam WITA. Nilai dari database berada pada timezone
+     * aplikasi (UTC), lalu dikonversi tepat satu kali ke Asia/Makassar.
+     */
+    public static function witaDateTime(mixed $value, bool $long = true): string
+    {
+        if (! $value) {
+            return '—';
+        }
+
+        if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value))) {
+            return Carbon::parse(trim($value))->locale('id')->translatedFormat($long ? 'd F Y' : 'd M Y');
+        }
+
+        $date = $value instanceof \DateTimeInterface
+            ? Carbon::instance($value)
+            : Carbon::parse((string) $value);
+
+        return $date->copy()
+            ->setTimezone(self::DISPLAY_TIMEZONE)
+            ->locale('id')
+            ->translatedFormat($long ? 'd F Y, H:i' : 'd M Y, H:i').' WITA';
     }
 
     public static function initials(string $name): string

@@ -56,15 +56,17 @@
                     </a>
                 </li>
 
-                <li>
-                    <a href="{{ route('anggota.index') }}"
-                       class="sidebar-link {{ request()->routeIs('anggota.*') ? 'active' : '' }}"
-                       title="{{ $role === 'staff' ? 'Anggota DPRD binaan' : 'Anggota DPRD' }}"
-                       @if (request()->routeIs('anggota.*')) aria-current="page" @endif>
-                        <span class="nav-icon"><i class="ri-team-line" aria-hidden="true"></i></span>
-                        <span class="sidebar-label">Anggota DPRD</span>
-                    </a>
-                </li>
+                @if ($role === 'admin')
+                    <li>
+                        <a href="{{ route('anggota.index') }}"
+                           class="sidebar-link {{ request()->routeIs('anggota.*') ? 'active' : '' }}"
+                           title="Anggota DPRD"
+                           @if (request()->routeIs('anggota.*')) aria-current="page" @endif>
+                            <span class="nav-icon"><i class="ri-team-line" aria-hidden="true"></i></span>
+                            <span class="sidebar-label">Anggota DPRD</span>
+                        </a>
+                    </li>
+                @endif
 
                 @if ($role === 'staff')
                     <li>

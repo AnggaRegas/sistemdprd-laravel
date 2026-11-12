@@ -29,6 +29,13 @@
             Kembali ke Daftar Laporan
         </a>
 
+        @if ($isAdministrator && $hasSimilarityResults)
+            <a href="{{ route('laporan.analisis', $report) }}" class="btn btn-outline-soft">
+                <i class="ri-scales-3-line" aria-hidden="true"></i>
+                Lihat Analisis Kemiripan
+            </a>
+        @endif
+
         @if ($isAdministrator)
             <button type="button" class="btn btn-soft-danger" data-bs-toggle="modal" data-bs-target="#deleteReportDetailModal">
                 <i class="ri-delete-bin-6-line" aria-hidden="true"></i>
@@ -54,7 +61,7 @@
                             <dl class="detail-list">
                                 <div class="detail-row">
                                     <dt>Tanggal masuk</dt>
-                                    <dd>{{ \App\Support\PortalData::dateTime($report->created_at) }}</dd>
+                                    <dd>{{ \App\Support\PortalData::witaDateTime($report->created_at) }}</dd>
                                 </div>
                                 <div class="detail-row">
                                     <dt>Kecamatan</dt>
@@ -326,6 +333,29 @@
         </div>
 
         <div class="col-xl-4">
+            @if ($isAdministrator && $hasSimilarityResults)
+                <div class="app-card mb-3" id="analisis">
+                    <div class="app-card-header">
+                        <div>
+                            <h2 class="app-card-title">Analisis Kemiripan</h2>
+                            <p class="app-card-subtitle">Hasil deteksi kemiripan aspirasi ini.</p>
+                        </div>
+                        <span class="status-badge status-info">Tersedia</span>
+                    </div>
+
+                    <div class="app-card-body">
+                        <p class="cell-muted" style="font-size: 11.5px; line-height: 1.7;">
+                            Aspirasi ini memiliki hasil analisis kemiripan dengan aspirasi lain yang tersimpan di sistem.
+                        </p>
+
+                        <a href="{{ route('laporan.analisis', $report) }}" class="btn btn-outline-soft w-100">
+                            <i class="ri-scales-3-line" aria-hidden="true"></i>
+                            Lihat Analisis Kemiripan
+                        </a>
+                    </div>
+                </div>
+            @endif
+
             @if ($isAdministrator && $needApproval)
                 <div class="app-card mb-3" id="persetujuan">
                     <div class="app-card-header">

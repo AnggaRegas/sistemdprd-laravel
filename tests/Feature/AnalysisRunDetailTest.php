@@ -69,30 +69,59 @@ class AnalysisRunDetailTest extends TestCase
             ->assertSee('Kemiripan tertinggi')
             ->assertSee('Aspirasi terdahulu tentang jalan berlubang')
             ->assertSee(number_format((float) $run->highest_similarity * 100, 1, ',', '.').' %')
+            ->assertSee('Cosine Similarity')
+            ->assertSee('Skor Masalah')
+            ->assertSee('Skor Lokasi')
+            ->assertSee('Kemiripan Tinggi')
             ->assertDontSee('TF-IDF')
-            ->assertDontSee('Detail Perhitungan')
-            ->assertDontSee('Cosine Similarity');
+            ->assertDontSee('Detail Perhitungan');
     }
 
-    public function test_report_detail_no_longer_links_to_analysis_page(): void
+    public function test_report_detail_does_not_show_analysis_button_when_no_similarity(): void
     {
         $admin = $this->administrator();
         $member = DprdMember::factory()->create();
         $report = LaporanMasyarakat::factory()->create([
             'dprd_member_id' => $member->id,
-            'ringkasan' => 'Aspirasi dengan tautan analisis',
+            'ringkasan' => 'Aspirasi mandiri tanpa kemiripan',
         ]);
 
         $this->actingAs($admin)
             ->get(route('laporan.show', $report))
             ->assertOk()
-            ->assertDontSee('Lihat Rincian Analisis')
+            ->assertDontSee('Lihat Analisis Kemiripan')
             ->assertDontSee(route('laporan.analisis', $report), false);
+    }
 
-        // Halaman analisis tetap tersedia bila dibuka langsung oleh administrator.
+    public function test_report_detail_shows_analysis_button_for_superadmin_when_similarity_exists(): void
+    {
+        $admin = $this->administrator();
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Uji']);
+        $report = $this->analyzedReport($member);
+
         $this->actingAs($admin)
-            ->get(route('laporan.analisis', $report))
-            ->assertOk();
+            ->get(route('laporan.show', $report))
+            ->assertOk()
+            ->assertSee('Lihat Analisis Kemiripan')
+            ->assertSee(route('laporan.analisis', $report), false);
+    }
+
+    public function test_staff_cannot_see_analysis_button_even_when_similarity_exists(): void
+    {
+        $member = DprdMember::factory()->create(['nama_lengkap' => 'Anggota Staf']);
+        $staff = User::factory()->staff($member)->create();
+        $report = $this->analyzedReport($member);
+        $report->update([
+            'assigned_to' => $staff->id,
+            'assigned_at' => now(),
+            'status' => LaporanMasyarakat::STATUS_DITUGASKAN,
+        ]);
+
+        $this->actingAs($staff)
+            ->get(route('laporan.show', $report))
+            ->assertOk()
+            ->assertDontSee('Lihat Analisis Kemiripan')
+            ->assertDontSee(route('laporan.analisis', $report), false);
     }
 
     public function test_staff_cannot_open_analysis_page(): void

@@ -243,7 +243,7 @@
                                                 <span class="report-row-unread-badge" title="Aspirasi baru belum dibaca">BARU</span>
                                             @endif
                                         </div>
-                                        <span class="cell-sub d-block d-md-none">{{ $report->kecamatan_label }} · {{ \App\Support\PortalData::date($report->tanggal_laporan?->toDateString()) }}</span>
+                                        <span class="cell-sub d-block d-md-none">{{ $report->kecamatan_label }} · {{ \App\Support\PortalData::witaDateTime($report->created_at, false) }}</span>
                                     </td>
                                     <td class="d-none d-md-table-cell"><span class="cell-muted">{{ $report->member?->nama_lengkap ?: '—' }}</span></td>
                                     <td class="report-summary-cell">
@@ -426,7 +426,7 @@
 
                                                     <span class="similarity-card-meta">
                                                         <span><i class="ri-user-line" aria-hidden="true"></i> {{ $currentCard['pelapor_nama'] ?: 'Pelapor tidak tercatat' }}</span>
-                                                        <span><i class="ri-calendar-2-line" aria-hidden="true"></i> {{ \App\Support\PortalData::date($currentCard['tanggal']) }}</span>
+                                                        <span><i class="ri-calendar-2-line" aria-hidden="true"></i> {{ \App\Support\PortalData::witaDateTime($report->created_at) }}</span>
                                                         <span><i class="ri-price-tag-3-line" aria-hidden="true"></i> {{ $currentCard['kategori_label'] ?: 'Kategori belum diisi' }}</span>
                                                         <span><i class="ri-flag-line" aria-hidden="true"></i> {{ $currentCard['status_label'] ?: 'Status tidak diketahui' }}</span>
                                                     </span>
@@ -488,7 +488,7 @@
 
                                                             <span class="similarity-card-meta">
                                                                 <span><i class="ri-user-line" aria-hidden="true"></i> {{ $match['pelapor_nama'] ?: 'Pelapor tidak tercatat' }}</span>
-                                                                <span><i class="ri-calendar-2-line" aria-hidden="true"></i> {{ \App\Support\PortalData::date($match['tanggal']) }}</span>
+                                                                <span><i class="ri-calendar-2-line" aria-hidden="true"></i> {{ \App\Support\PortalData::witaDateTime($match['created_at'] ?? $match['tanggal']) }}</span>
                                                                 <span><i class="ri-price-tag-3-line" aria-hidden="true"></i> {{ $match['kategori_label'] ?: 'Kategori belum diisi' }}</span>
                                                                 <span><i class="ri-flag-line" aria-hidden="true"></i> {{ $match['status_label'] ?: 'Status tidak diketahui' }}</span>
                                                             </span>

@@ -281,6 +281,38 @@ class LaporanMasyarakat extends Model
         return $this->hasMany(LaporanSimilarityResult::class, 'compared_laporan_masyarakat_id');
     }
 
+    public function analysisRun(): HasOne
+    {
+        return $this->hasOne(LaporanAnalysisRun::class, 'laporan_masyarakat_id');
+    }
+
+    public function hasSimilarityResults(): bool
+    {
+        if ($this->relationLoaded('similarityResults') && $this->similarityResults->isNotEmpty()) {
+            return true;
+        }
+
+        if ($this->relationLoaded('comparedSimilarityResults') && $this->comparedSimilarityResults->isNotEmpty()) {
+            return true;
+        }
+
+        if ($this->similarity_group_id !== null) {
+            return true;
+        }
+
+        if ($this->similarityResults()->exists() || $this->comparedSimilarityResults()->exists()) {
+            return true;
+        }
+
+        return LaporanAnalysisRun::query()
+            ->where('laporan_masyarakat_id', $this->id)
+            ->where(function ($query) {
+                $query->where('highest_similarity', '>', 0)
+                    ->orWhere('is_duplicate', true);
+            })
+            ->exists();
+    }
+
     public function similarityGroup(): BelongsTo
     {
         return $this->belongsTo(LaporanSimilarityGroup::class, 'similarity_group_id');

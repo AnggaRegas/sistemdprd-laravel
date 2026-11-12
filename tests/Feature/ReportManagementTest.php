@@ -368,9 +368,14 @@ class ReportManagementTest extends TestCase
         $this->actingAs($staff)
             ->get(route('dashboard.staf'))
             ->assertOk()
-            ->assertSee('>Anggota DPRD</span>', false)
-            ->assertSee(route('anggota.index'), false)
+            ->assertDontSee('<span class="sidebar-label">Anggota DPRD</span>', false)
             ->assertSee('Pokir &amp; Hasil Reses', false);
+
+        $admin = $this->administrator();
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('<span class="sidebar-label">Anggota DPRD</span>', false);
 
         $this->actingAs($staff)
             ->get(route('anggota.index'))

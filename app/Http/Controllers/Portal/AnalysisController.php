@@ -47,29 +47,43 @@ class AnalysisController extends Controller
             ? (int) $result->compared_laporan_masyarakat_id
             : (int) $result->laporan_masyarakat_id;
 
+        $resultsByOther = $results->groupBy($otherId);
+
+        $snapshotMatches = collect($analysisRun?->snapshot['matches'] ?? [])->keyBy('id');
+        $snapshotReview = collect($analysisRun?->snapshot['manual_review'] ?? [])->keyBy('id');
+
         /*
-         * Hanya baris berlabel tinggi (dan baris lama tanpa label) yang dipakai
-         * sebagai daftar kemiripan. Skor yang ditampilkan adalah cosine TF-IDF
-         * yang tersimpan, bukan skor gabungan.
+         * Baris berlabel tinggi (dan baris lama tanpa label) sebagai daftar kemiripan utama.
          */
-        $pairScores = $results
-            ->filter(fn (LaporanSimilarityResult $result) => in_array(
-                $result->similarity_level,
-                [LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI, null],
-                true
-            ))
-            ->groupBy($otherId)
-            ->map(fn (Collection $rows) => (float) $rows->max('similarity_score'));
+        $highResults = $results->filter(fn (LaporanSimilarityResult $result) => in_array(
+            $result->similarity_level,
+            [LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI, null],
+            true
+        ))->groupBy($otherId);
 
         $comparisons = $group
-            ? $this->comparisonsFromGroup($laporan, $group, $pairScores)
-            : $this->comparisonsFromResults($laporan, $pairScores);
+            ? $this->comparisonsFromGroup($laporan, $group, $resultsByOther, $snapshotMatches)
+            : $this->comparisonsFromResults($laporan, $highResults, $snapshotMatches);
+
+        /*
+         * Jika belum terkelompok dan hasil relasi kosong, periksa data snapshot tersimpan.
+         */
+        if ($comparisons->isEmpty() && $snapshotMatches->isNotEmpty()) {
+            $comparisons = $this->comparisonsFromSnapshot($snapshotMatches);
+        }
+
+        $reviewResults = $results
+            ->filter(fn (LaporanSimilarityResult $result) => $result->similarity_level === LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU)
+            ->groupBy($otherId);
 
         $reviewComparisons = $this->reviewComparisonsFromResults(
-            $results
-                ->filter(fn (LaporanSimilarityResult $result) => $result->similarity_level === LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU)
-                ->groupBy($otherId)
+            $reviewResults,
+            $snapshotReview
         );
+
+        if ($reviewComparisons->isEmpty() && $snapshotReview->isNotEmpty()) {
+            $reviewComparisons = $this->comparisonsFromSnapshot($snapshotReview, true);
+        }
 
         return view('analysis.show', [
             'laporan' => $laporan,
@@ -84,69 +98,102 @@ class AnalysisController extends Controller
     }
 
     /**
-     * @param  Collection<int, float>  $pairScores
+     * @param  Collection<int, Collection<int, LaporanSimilarityResult>>  $resultsByOther
+     * @param  Collection<int, array<string, mixed>>  $snapshotMatches
      * @return Collection<int, array<string, mixed>>
      */
     private function comparisonsFromGroup(
         LaporanMasyarakat $laporan,
         $group,
-        Collection $pairScores
+        Collection $resultsByOther,
+        Collection $snapshotMatches
     ): Collection {
         return $group->members
             ->filter(fn ($member) => $member->laporan !== null
                 && (int) $member->laporan->id !== (int) $laporan->id)
-            ->map(function ($member) use ($group, $pairScores): array {
+            ->map(function ($member) use ($group, $resultsByOther, $snapshotMatches): array {
                 $other = $member->laporan;
-                $score = $pairScores->get((int) $other->id);
+                $otherId = (int) $other->id;
 
-                if ($score === null && $member->similarity_score !== null) {
-                    $score = (float) $member->similarity_score;
-                }
+                $res = $resultsByOther->get($otherId)?->sortByDesc('similarity_score')->first();
+                $snap = $snapshotMatches->get($otherId);
+                $memberEvidence = is_array($member->evidence) ? $member->evidence : null;
 
-                return [
-                    'id' => (int) $other->id,
+                $metrics = $this->resolveMetrics(
+                    $res,
+                    $snap,
+                    $memberEvidence,
+                    $member->similarity_score !== null ? (float) $member->similarity_score : null
+                );
+
+                return array_merge([
+                    'id' => $otherId,
+                    'nomor_tiket' => $other->nomor_tiket,
                     'pelapor_nama' => $other->pelapor_nama,
+                    'pelapor_alamat' => $other->pelapor_alamat,
+                    'kecamatan' => $other->kecamatan,
+                    'created_at' => $other->created_at,
                     'ringkasan' => $other->ringkasan,
                     'isi' => $other->isi,
-                    'is_main' => (int) $group->main_laporan_id === (int) $other->id,
-                    'score' => $score,
-                ];
+                    'is_main' => (int) $group->main_laporan_id === $otherId,
+                    'similarity_status' => $other->similarity_status,
+                    'similarity_status_label' => $other->similarity_status_label,
+                    'level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
+                    'level_label' => 'Kemiripan Tinggi',
+                    'level_tone' => 'success',
+                ], $metrics);
             })
             ->sortByDesc(fn (array $row) => $row['score'] ?? 0)
             ->values();
     }
 
     /**
-     * @param  Collection<int, float>  $pairScores
+     * @param  Collection<int, Collection<int, LaporanSimilarityResult>>  $grouped
+     * @param  Collection<int, array<string, mixed>>  $snapshotMatches
      * @return Collection<int, array<string, mixed>>
      */
-    private function comparisonsFromResults(LaporanMasyarakat $laporan, Collection $pairScores): Collection
-    {
-        if ($pairScores->isEmpty()) {
+    private function comparisonsFromResults(
+        LaporanMasyarakat $laporan,
+        Collection $grouped,
+        Collection $snapshotMatches
+    ): Collection {
+        if ($grouped->isEmpty()) {
             return collect();
         }
 
         $reports = LaporanMasyarakat::query()
-            ->whereIn('id', $pairScores->keys()->all())
+            ->whereIn('id', $grouped->keys()->all())
             ->get()
             ->keyBy('id');
 
-        return $pairScores
-            ->map(function (float $score, int $id) use ($reports): ?array {
+        return $grouped
+            ->map(function (Collection $rows, int $id) use ($reports, $snapshotMatches): ?array {
                 $other = $reports->get($id);
-
                 if (! $other) {
                     return null;
                 }
 
-                return [
+                $res = $rows->sortByDesc('similarity_score')->first();
+                $snap = $snapshotMatches->get($id);
+
+                $metrics = $this->resolveMetrics($res, $snap, null, (float) $res->similarity_score);
+
+                return array_merge([
                     'id' => (int) $other->id,
+                    'nomor_tiket' => $other->nomor_tiket,
                     'pelapor_nama' => $other->pelapor_nama,
+                    'pelapor_alamat' => $other->pelapor_alamat,
+                    'kecamatan' => $other->kecamatan,
+                    'created_at' => $other->created_at,
                     'ringkasan' => $other->ringkasan,
                     'isi' => $other->isi,
                     'is_main' => false,
-                    'score' => $score,
-                ];
+                    'similarity_status' => $other->similarity_status,
+                    'similarity_status_label' => $other->similarity_status_label,
+                    'level' => LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
+                    'level_label' => 'Kemiripan Tinggi',
+                    'level_tone' => 'success',
+                ], $metrics);
             })
             ->filter()
             ->sortByDesc('score')
@@ -154,14 +201,11 @@ class AnalysisController extends Controller
     }
 
     /**
-     * Pasangan yang perlu ditinjau manusia: skor masalah memenuhi ambang,
-     * tetapi lokasi belum dapat dikonfirmasi (alamat tidak lengkap, kecamatan
-     * berbeda, atau skor lokasi di bawah ambang).
-     *
      * @param  Collection<int, Collection<int, LaporanSimilarityResult>>  $grouped
+     * @param  Collection<int, array<string, mixed>>  $snapshotReview
      * @return Collection<int, array<string, mixed>>
      */
-    private function reviewComparisonsFromResults(Collection $grouped): Collection
+    private function reviewComparisonsFromResults(Collection $grouped, Collection $snapshotReview): Collection
     {
         if ($grouped->isEmpty()) {
             return collect();
@@ -173,34 +217,146 @@ class AnalysisController extends Controller
             ->keyBy('id');
 
         return $grouped
-            ->map(function (Collection $rows, int $id) use ($reports): ?array {
+            ->map(function (Collection $rows, int $id) use ($reports, $snapshotReview): ?array {
                 $other = $reports->get($id);
-
                 if (! $other) {
                     return null;
                 }
 
-                $result = $rows->sortByDesc('similarity_score')->first();
-                $evidence = is_array($result->evidence) ? $result->evidence : [];
+                $res = $rows->sortByDesc('similarity_score')->first();
+                $snap = $snapshotReview->get($id);
 
-                return [
+                $metrics = $this->resolveMetrics($res, $snap, null, (float) $res->similarity_score);
+
+                return array_merge([
                     'id' => (int) $other->id,
                     'nomor_tiket' => $other->nomor_tiket,
                     'pelapor_nama' => $other->pelapor_nama,
-                    'ringkasan' => $other->ringkasan,
-                    'isi' => $other->isi,
                     'pelapor_alamat' => $other->pelapor_alamat,
                     'kecamatan' => $other->kecamatan,
-                    'score' => (float) $result->similarity_score,
-                    'problem_score' => isset($evidence['problem_score']) ? (float) $evidence['problem_score'] : (float) $result->similarity_score,
-                    'location_score' => isset($evidence['location_score']) ? (float) $evidence['location_score'] : null,
-                    'combined_score' => isset($evidence['combined_score']) ? (float) $evidence['combined_score'] : null,
-                    'location_status' => $evidence['location_status'] ?? null,
-                    'reasons' => $evidence['reasons'] ?? [],
-                ];
+                    'created_at' => $other->created_at,
+                    'ringkasan' => $other->ringkasan,
+                    'isi' => $other->isi,
+                    'is_main' => false,
+                    'similarity_status' => $other->similarity_status,
+                    'similarity_status_label' => $other->similarity_status_label,
+                    'level' => LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU,
+                    'level_label' => 'Perlu Tinjauan Manual',
+                    'level_tone' => 'warning',
+                ], $metrics);
             })
             ->filter()
             ->sortByDesc('score')
             ->values();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $snapshotItems
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function comparisonsFromSnapshot(Collection $snapshotItems, bool $isReview = false): Collection
+    {
+        if ($snapshotItems->isEmpty()) {
+            return collect();
+        }
+
+        $reports = LaporanMasyarakat::query()
+            ->whereIn('id', $snapshotItems->keys()->all())
+            ->get()
+            ->keyBy('id');
+
+        return $snapshotItems
+            ->map(function (array $item, int $id) use ($reports, $isReview): ?array {
+                $other = $reports->get($id);
+                if (! $other) {
+                    return null;
+                }
+
+                $metrics = $this->resolveMetrics(
+                    null,
+                    $item,
+                    null,
+                    (float) ($item['problem_score'] ?? $item['similarity'] ?? 0)
+                );
+
+                return array_merge([
+                    'id' => (int) $other->id,
+                    'nomor_tiket' => $other->nomor_tiket,
+                    'pelapor_nama' => $other->pelapor_nama,
+                    'pelapor_alamat' => $other->pelapor_alamat,
+                    'kecamatan' => $other->kecamatan,
+                    'created_at' => $other->created_at,
+                    'ringkasan' => $other->ringkasan,
+                    'isi' => $other->isi,
+                    'is_main' => false,
+                    'similarity_status' => $other->similarity_status,
+                    'similarity_status_label' => $other->similarity_status_label,
+                    'level' => $isReview ? LaporanMasyarakat::SIMILARITY_LEVEL_PERLU_TINJAU : LaporanMasyarakat::SIMILARITY_LEVEL_TINGGI,
+                    'level_label' => $isReview ? 'Perlu Tinjauan Manual' : 'Kemiripan Tinggi',
+                    'level_tone' => $isReview ? 'warning' : 'success',
+                ], $metrics);
+            })
+            ->filter()
+            ->sortByDesc('score')
+            ->values();
+    }
+
+    /**
+     * Ekstrak metrik kemiripan dari hasil tersimpan di database tanpa menghitung ulang.
+     *
+     * @param  LaporanSimilarityResult|null  $result
+     * @param  array<string, mixed>|null  $snapshotData
+     * @param  array<string, mixed>|null  $memberEvidence
+     * @return array<string, mixed>
+     */
+    private function resolveMetrics(
+        ?LaporanSimilarityResult $result,
+        ?array $snapshotData,
+        ?array $memberEvidence,
+        ?float $fallbackScore
+    ): array {
+        $evidence = [];
+        if ($result && is_array($result->evidence) && ! empty($result->evidence)) {
+            $evidence = $result->evidence;
+        } elseif ($snapshotData && isset($snapshotData['evidence']) && is_array($snapshotData['evidence'])) {
+            $evidence = $snapshotData['evidence'];
+        } elseif ($memberEvidence && is_array($memberEvidence) && ! empty($memberEvidence)) {
+            $evidence = $memberEvidence;
+        }
+
+        $cosine = $evidence['cosine_similarity']
+            ?? ($result ? $result->similarity_score : null)
+            ?? ($snapshotData['problem_score'] ?? $snapshotData['similarity'] ?? null)
+            ?? $fallbackScore;
+
+        $problem = $evidence['problem_score']
+            ?? ($snapshotData['problem_score'] ?? null)
+            ?? $cosine;
+
+        $location = $evidence['location_score']
+            ?? ($snapshotData['location_score'] ?? null);
+
+        $combined = $evidence['combined_score']
+            ?? ($snapshotData['combined_score'] ?? null);
+
+        $sharedTerms = $evidence['shared_terms']
+            ?? ($snapshotData['evidence']['shared_terms'] ?? []);
+
+        $reasons = $evidence['reasons']
+            ?? ($snapshotData['evidence']['reasons'] ?? []);
+
+        $locationStatus = $evidence['location_status']
+            ?? ($snapshotData['location_status'] ?? null);
+
+        return [
+            'score' => $cosine !== null ? (float) $cosine : null,
+            'cosine_similarity' => $cosine !== null ? (float) $cosine : null,
+            'problem_score' => $problem !== null ? (float) $problem : null,
+            'location_score' => $location !== null ? (float) $location : null,
+            'combined_score' => $combined !== null ? (float) $combined : null,
+            'shared_terms' => is_array($sharedTerms) ? $sharedTerms : [],
+            'reasons' => is_array($reasons) ? $reasons : [],
+            'location_status' => $locationStatus,
+        ];
     }
 }
